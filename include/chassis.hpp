@@ -66,6 +66,7 @@ class Chassis {
         const float wheelDiameter;
         const float trackWidth;
         const float gearRatio;
+        
         pros::Mutex mutex;
         
         double distTravelled = 0;

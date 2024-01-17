@@ -30,61 +30,80 @@ float degToRad(float deg) { return deg * M_PI / 180; }
 
 /*========================================================INTIALIZE----------------------------------------------------------*/
 void Chassis::calibrate() {
-    
-    pros::Task calibratetask([=]{
-        imu->reset();
-        leftMotors->tare_position();
-        rightMotors->tare_position();
-        double prevHeading = 0;
-        double currentHeading = 0;
-        double deltaHeading = 0;
-        double currentForTravel = 0;
-        double prevForTravel = 0;
-        double deltaForTravel = 0;
-        double sin_angle = 0;
-        double cos_angle = 0;
+    imu->reset();
+    leftMotors->tare_position();
+    rightMotors->tare_position();
+    pros::Task calibratetask(([=]{
+        float leftencodervalue = 0;
+        float rightencodervalue = 0;
+        float prevleftencodervalue = 0;
+        float prevrightencodervalue = 0;
+        float imuvalue = 0;
+        float previmuvalue = 0;
+        float deltaleftencodervalue = 0;
+        float deltarightencodervalue = 0;
+        float deltaimuvalue = 0;
+        float deltaheading = 0;
+        float avgheading = 0;
         
-    while (true) {
-         
-        currentForTravel = ((leftMotors->get_positions()[0]+rightMotors->get_positions()[0])/2)* (wheelDiameter*M_PI) * gearRatio;
-        deltaForTravel = currentForTravel - prevForTravel;
-        prevForTravel = currentForTravel;
+        while(true){
+            //get values from sensors
+            leftencodervalue = leftMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio;
+            rightencodervalue = rightMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio;
+            imuvalue = degToRad(imu->get_rotation());
 
-        currentHeading = std::fmod((360.0 - imu->get_heading()), 360.0);
-        deltaHeading = currentHeading - prevHeading;
-        prevHeading = currentHeading;
+            //calculate change in encoder values
+            deltaleftencodervalue = leftencodervalue - prevleftencodervalue;
+            deltarightencodervalue = rightencodervalue - prevrightencodervalue;
+            deltaimuvalue = imuvalue - previmuvalue;
 
-        constexpr double delta_sideways_travel = 0.0;
-        double average_heading = prevHeading + deltaHeading / 2.0;
+            //update sensor vals
+            prevleftencodervalue = leftencodervalue;
+            prevrightencodervalue = rightencodervalue;
+            previmuvalue = imuvalue;
+            
+            //set heading val to initial global heading
+            float globalheading = heading;
+            
+            //update heading vals
+            globalheading += deltaimuvalue;
+            deltaheading = globalheading - heading;
+            avgheading = heading + deltaheading/2;
+            
+            //calculate deltas -- add horiz tracker later
+            float deltaX = 0;
+            float deltaY = 0;
 
-        if (deltaHeading == 0.0) {
-            sin_angle = sin(degToRad(average_heading));
-	        cos_angle = cos(degToRad(average_heading));
+            deltaY = (deltaleftencodervalue+deltarightencodervalue)/2;
+            
+            //calculate local placement
+            float localX = 0;
+            float localY = 0;
 
-            x+= (deltaForTravel * cos_angle) - (delta_sideways_travel * sin_angle);
-            y+= (deltaForTravel* sin_angle) + (delta_sideways_travel * cos_angle);
-			
-		} else {
+            if(deltaheading == 0){
+                localX = deltaX;
+                localY = deltaY;
+            }else{
+                localX = 2 * sin(deltaheading/2) * (deltaX/deltaheading + (trackWidth/2));
+                localY = 2 * sin(deltaheading/2) * (deltaY/deltaheading + 0);
+            }
 
-            //chord length formulae fr
-            sin_angle = sin(degToRad(average_heading));
-	         cos_angle = cos(degToRad(average_heading));
+            double prevX = x;
+            double prevY = y;
+            double prevTheta = heading;
 
-            x+= 2.0 * (deltaForTravel / degToRad(deltaHeading)) * std::sin(degToRad(deltaHeading / 2)) * cos_angle - 0.0 * sin_angle;
-            y+= 2.0 * (deltaForTravel / degToRad(deltaHeading)) * std::sin(degToRad(deltaHeading / 2)) * sin_angle + 0.0 * cos_angle;
+            //update global placement
+            x += localY * sin(avgheading);
+            y += localY * cos(avgheading);
+            x += localX * -cos(avgheading);
+            y += localX  * sin(avgheading);
+            heading = globalheading;
 
-	
-		}
-	//update odompose
-	odomPose.x = x;
-	odomPose.y = y;
-	odomPose.theta = degToRad(imu->get_heading());
-        pros::delay(10);
+            pros::delay(10);
+        }
 
-    }
-    pros::delay(10);
-    });
-    
+    }));
+        
     
 }
 void Chassis::setHeading(float heading) {
