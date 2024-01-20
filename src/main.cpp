@@ -20,7 +20,23 @@ void competition_initialize() {}
 
 
 void autonomous() {
-    
+    //regular move
+    chassis.move(24, 127);
+    //async move
+    chassis.move(24, 127, true);
+    chassis.waitUntil(10);
+    pros::lcd::print(1, "bot reached 10 inches!");
+    chassis.waitUntilDone();
+    //turn
+    chassis.turn(90, 127);
+    //async turn
+    chassis.turn(90, 127, true);
+    chassis.waitUntil(10); //error in degrees
+    pros::lcd::print(1, "bot reached 10 degrees!");
+    chassis.waitUntilDone();
+    //swing
+    chassis.swing(0, true);
+    //async swing etc. etc.
     
 }
 
