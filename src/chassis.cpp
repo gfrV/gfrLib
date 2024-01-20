@@ -48,58 +48,36 @@ void Chassis::calibrate() {
         double prevLeft = 0;
         double prevRight = 0;
         double prevTheta= 0;
+        x = 0;
+        y = 0;
         while(true){
             double left = leftMotors->get_positions()[0]* wheelDiameter * M_PI * gearRatio;
             double right = rightMotors->get_positions()[0]* wheelDiameter * M_PI * gearRatio;;
             double dist = ((left - prevLeft) + (right - prevRight)) / 2;
-            double thetaChange = rollAngle180(imu->get_heading() - prevTheta);
+            double thetaChange = rollAngle180(degToRad(imu->get_heading() - prevTheta));
             x += dist * sin(thetaChange);
             y += dist * cos(thetaChange);
             prevLeft = left;
             prevRight = right;
             prevTheta = imu->get_heading();
+            odomPose.x = x;
+            odomPose.y = y;
+            odomPose.theta = degToRad(imu->get_heading());
         }
     });
     
 }
-/*
-from tensorflow.keras.preprocessing import image
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-loaded_model = tf.keras.models.load_model('final_model.h5')  # Use the path where your final model is saved
 
-def preprocess_image(img_path):
-    img = image.load_img(img_path, target_size=(224, 224))
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)
-    img_array /= 255.0  # Normalize the image
-    return img_array
-def predict_image(model, img_path):
-    img_array = preprocess_image(img_path)
-    prediction = model.predict(img_array)
-    class_labels = ['non-dementia', 'minor dementia', 'mild dementia', 'major dementia']
-    predicted_class = class_labels[np.argmax(prediction)]
-    return predicted_class, prediction[0]
-from google.colab import files
-
-uploaded = files.upload()
-
-img_path = list(uploaded.keys())[0]
-predicted_class, confidence = predict_image(loaded_model, img_path)
-
-
-img = Image.open(img_path)
-plt.imshow(img)
-plt.axis('off')
-plt.title(f'Prediction: {predicted_class} (Confidence: {confidence.max():.2f})')
-plt.show()
-
-
-*/
 void Chassis::setHeading(float heading) {
     imu->set_heading(heading);
 }
+
+void Chassis::setPose(float x1, float y1, float theta1) {
+    x = x1;
+    y = y1;
+    imu->set_heading(theta1);
+}
+
 
 void Chassis::tank(float left, float right) {
     leftMotors->move(left);
@@ -198,7 +176,7 @@ void Chassis::move_without_settletime(float distance, float timeout,bool async){
         arcade(pidOutput, 0);
 
         pros::delay(20);
-    } while ((pros::millis() - start) != timeout);
+    } while ((pros::millis() - start) < timeout);
     arcade(0,0);
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
@@ -418,15 +396,8 @@ float pointAngleDifference(double x1, double y1, double x2, double y2){
 }
 //odom movements
 
-void Chassis::setPose(float x1, float y1, float theta1) {
-    x = x1;
-    y = y1;
-    imu->set_heading(theta1);
-}
-std::pair<double, double> Chassis::getPose(){
-    return std::make_pair(x, y);
 
-} 
+
 
     
 void Chassis::turnToPoint(float x1, float y1, int timeout, float maxSpeed,bool async){

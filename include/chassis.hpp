@@ -23,7 +23,6 @@ class Chassis {
 
         void calibrate();
         void setPose(float x1, float y1, float theta1);
-        std::pair<double, double> getPose();
         
         void setHeading(float heading);
         void tank(float left, float right);
