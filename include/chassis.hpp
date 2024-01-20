@@ -29,21 +29,21 @@ class Chassis {
         void tank(float left, float right);
         void arcade(float lateral, float angular);
     
-        void move(float distance, float maxSpeed=127);
-        void turn(float heading, float maxSpeed=127);
-        void turnsmall(float heading, float maxSpeed = 127);
-        void swing(float heading, bool isLeft, float maxSpeed=127);
-        void arc(float heading, double leftMult, double rightMult, float maxSpeed = 127);
-        void arcnonsettle(float heading, double leftMult, double rightMult, float maxSpeed = 127);
-        void move_without_settle(float distance, float exitrange);
-        void swing_without_settle(float heading, bool isLeft, float timeout);
+        void move(float distance, float maxSpeed=127, bool async = false);
+        void turn(float heading, float maxSpeed=127,bool async = false);
+        void turnsmall(float heading, float maxSpeed = 127,bool async = false);
+        void swing(float heading, bool isLeft, float maxSpeed=127,bool async = false);
+        void arc(float heading, double leftMult, double rightMult, float maxSpeed = 127,bool async = false);
+        void arcnonsettle(float heading, double leftMult, double rightMult, float maxSpeed = 127,bool async = false);
+        void move_without_settle(float distance, float exitrange,bool async = false);
+        void swing_without_settle(float heading, bool isLeft, float timeout,bool async = false);
         
         
-       void movewithheading(float distance, float heading, float maxSpeed = 127);
+       void movewithheading(float distance, float heading, float maxSpeed = 127,bool async = false);
         
-        void moveToPoint(float x1, float y1, int timeout, float maxSpeed = 127);
-        void turnToPoint(float x1, float y1, int timeout, float maxSpeed=127);
-        void move_without_settletime(float distance, float timeout); 
+        void moveToPoint(float x1, float y1, int timeout, float maxSpeed = 127,bool async = false);
+        void turnToPoint(float x1, float y1, int timeout, float maxSpeed=127,bool async = false);
+        void move_without_settletime(float distance, float timeout,bool async = false); 
         void waitUntilDist(float dist);
         void moveToPose(float x1, float y1, float theta1, int timeout, bool forwards, float maxSpeed, bool async,float chasePower,
                           float lead, float smoothness, bool linearexit, float linearexitrange);

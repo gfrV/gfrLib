@@ -27,85 +27,76 @@ void Chassis::waitUntilDist(float dist) {
 Pose odomPose(0,0,0);
 float radToDeg(float rad) { return rad * 180 / M_PI; }
 float degToRad(float deg) { return deg * M_PI / 180; }
+static float rollAngle180(float angle) {
+    while (angle < -180) {
+        angle += 360;
+    }
 
+    while (angle >= 180) {
+        angle -= 360;
+    }
+
+    return angle;
+}
 /*========================================================INTIALIZE----------------------------------------------------------*/
 void Chassis::calibrate() {
     imu->reset();
     leftMotors->tare_position();
     rightMotors->tare_position();
-    pros::Task calibratetask(([=]{
-        float leftencodervalue = 0;
-        float rightencodervalue = 0;
-        float prevleftencodervalue = 0;
-        float prevrightencodervalue = 0;
-        float imuvalue = 0;
-        float previmuvalue = 0;
-        float deltaleftencodervalue = 0;
-        float deltarightencodervalue = 0;
-        float deltaimuvalue = 0;
-        float deltaheading = 0;
-        float avgheading = 0;
-        
+    
+    pros::Task([=]{
+        double prevLeft = 0;
+        double prevRight = 0;
+        double prevTheta= 0;
         while(true){
-            //get values from sensors
-            leftencodervalue = leftMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio;
-            rightencodervalue = rightMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio;
-            imuvalue = degToRad(imu->get_rotation());
-
-            //calculate change in encoder values
-            deltaleftencodervalue = leftencodervalue - prevleftencodervalue;
-            deltarightencodervalue = rightencodervalue - prevrightencodervalue;
-            deltaimuvalue = imuvalue - previmuvalue;
-
-            //update sensor vals
-            prevleftencodervalue = leftencodervalue;
-            prevrightencodervalue = rightencodervalue;
-            previmuvalue = imuvalue;
-            
-            //set heading val to initial global heading
-            float globalheading = heading;
-            
-            //update heading vals
-            globalheading += deltaimuvalue;
-            deltaheading = globalheading - heading;
-            avgheading = heading + deltaheading/2;
-            
-            //calculate deltas -- add horiz tracker later
-            float deltaX = 0;
-            float deltaY = 0;
-
-            deltaY = (deltaleftencodervalue+deltarightencodervalue)/2;
-            
-            //calculate local placement
-            float localX = 0;
-            float localY = 0;
-
-            if(deltaheading == 0){
-                localX = deltaX;
-                localY = deltaY;
-            }else{
-                localX = 2 * sin(deltaheading/2) * (deltaX/deltaheading + (trackWidth/2));
-                localY = 2 * sin(deltaheading/2) * (deltaY/deltaheading + 0);
-            }
-
-            double prevX = x;
-            double prevY = y;
-            double prevTheta = heading;
-
-            //update global placement
-            x += localY * sin(avgheading);
-            y += localY * cos(avgheading);
-            x += localX * -cos(avgheading);
-            y += localX  * sin(avgheading);
-            heading = globalheading;
-
-            pros::delay(10);
+            double left = leftMotors->get_positions()[0]* wheelDiameter * M_PI * gearRatio;
+            double right = rightMotors->get_positions()[0]* wheelDiameter * M_PI * gearRatio;;
+            double dist = ((left - prevLeft) + (right - prevRight)) / 2;
+            double thetaChange = rollAngle180(imu->get_heading() - prevTheta);
+            x += dist * sin(thetaChange);
+            y += dist * cos(thetaChange);
+            prevLeft = left;
+            prevRight = right;
+            prevTheta = imu->get_heading();
         }
-
-    }));
-        
+    });
     
 }
+/*
+from tensorflow.keras.preprocessing import image
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+loaded_model = tf.keras.models.load_model('final_model.h5')  # Use the path where your final model is saved
+
+def preprocess_image(img_path):
+    img = image.load_img(img_path, target_size=(224, 224))
+    img_array = image.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array /= 255.0  # Normalize the image
+    return img_array
+def predict_image(model, img_path):
+    img_array = preprocess_image(img_path)
+    prediction = model.predict(img_array)
+    class_labels = ['non-dementia', 'minor dementia', 'mild dementia', 'major dementia']
+    predicted_class = class_labels[np.argmax(prediction)]
+    return predicted_class, prediction[0]
+from google.colab import files
+
+uploaded = files.upload()
+
+img_path = list(uploaded.keys())[0]
+predicted_class, confidence = predict_image(loaded_model, img_path)
+
+
+img = Image.open(img_path)
+plt.imshow(img)
+plt.axis('off')
+plt.title(f'Prediction: {predicted_class} (Confidence: {confidence.max():.2f})')
+plt.show()
+
+
+*/
 void Chassis::setHeading(float heading) {
     imu->set_heading(heading);
 }
@@ -123,20 +114,10 @@ void Chassis::arcade(float lateral, float angular) {
 }
 
 
-static float rollAngle180(float angle) {
-    while (angle < -180) {
-        angle += 360;
-    }
 
-    while (angle >= 180) {
-        angle -= 360;
-    }
-
-    return angle;
-}
 
 /*----------------------------------------------------REGULAR MOVE FUNCTION--------------------------------------------------------------*/
-void Chassis::move(float distance, float maxSpeed) {
+void Chassis::move(float distance, float maxSpeed,bool async) {
     drivePID.reset();
     backwardPID.reset();
     headingPID.reset();
@@ -178,7 +159,7 @@ void Chassis::move(float distance, float maxSpeed) {
 
     arcade(0, 0);
 }
-void Chassis::move_without_settle(float distance, float exitrange){
+void Chassis::move_without_settle(float distance, float exitrange,bool async){
     drivePID.reset();
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
@@ -201,7 +182,7 @@ void Chassis::move_without_settle(float distance, float exitrange){
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
 }
-void Chassis::move_without_settletime(float distance, float timeout){
+void Chassis::move_without_settletime(float distance, float timeout,bool async){
     drivePID.reset();
 
     float beginningLeft = leftMotors->get_positions()[0];
@@ -222,7 +203,7 @@ void Chassis::move_without_settletime(float distance, float timeout){
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
 }
-void Chassis::movewithheading(float distance, float heading, float maxSpeed){
+void Chassis::movewithheading(float distance, float heading, float maxSpeed,bool async){
     drivePID.reset();
     backwardPID.reset();
     headingPID.reset();
@@ -265,7 +246,7 @@ void Chassis::movewithheading(float distance, float heading, float maxSpeed){
     arcade(0, 0);
 }
 /*----------------------------------------------------TURN FUNCTIONS-------------------------------------------------------------------------*/
-void Chassis::turn(float heading,float maxSpeed) {
+void Chassis::turn(float heading,float maxSpeed,bool async) {
     turnPID.reset();
 
     do {
@@ -287,7 +268,7 @@ void Chassis::turn(float heading,float maxSpeed) {
 
     arcade(0, 0);
 }
-void Chassis::turnsmall(float heading, float maxSpeed){
+void Chassis::turnsmall(float heading, float maxSpeed,bool async){
     smallturnPID.reset();
 
     do {
@@ -311,7 +292,7 @@ void Chassis::turnsmall(float heading, float maxSpeed){
 }
 /*-------------------------------------------SWING FUNCTIONS----------------------------------------------------------------*/
 
-void Chassis::swing(float heading, bool isLeft, float maxSpeed){
+void Chassis::swing(float heading, bool isLeft, float maxSpeed,bool async){
     swingPID.reset();
     if(isLeft){
         do {
@@ -354,7 +335,7 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed){
 }
 
 
-void Chassis::swing_without_settle(float heading, bool isLeft, float timeout){
+void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,bool async){
     swingPID.reset();
     if(isLeft){
         auto start = pros::millis();
@@ -388,7 +369,7 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float timeout){
 }
 
 //arc 
-void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpeed){
+void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpeed,bool async){
     arcPID.reset();
         do {
         float error = rollAngle180(heading - imu->get_heading());
@@ -407,7 +388,7 @@ void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpe
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     }
 
-void Chassis::arcnonsettle(float heading, double leftMult, double rightMult, float maxSpeed){
+void Chassis::arcnonsettle(float heading, double leftMult, double rightMult, float maxSpeed,bool async){
     arcPID.reset();
         do {
         float error = rollAngle180(heading - imu->get_heading());
@@ -448,10 +429,10 @@ std::pair<double, double> Chassis::getPose(){
 } 
 
     
-void Chassis::turnToPoint(float x1, float y1, int timeout, float maxSpeed){
+void Chassis::turnToPoint(float x1, float y1, int timeout, float maxSpeed,bool async){
         //turn part
-        float angleError = atan2(y - y1, x - x1);
-        turn(rollAngle180(radToDeg(angleError)), maxSpeed);
+        float targetTheta = fmod(radToDeg(M_PI_2 - atan2(y1, x1)), 360);
+        turn(rollAngle180(radToDeg(targetTheta)), maxSpeed);
     
 }
 
@@ -481,7 +462,7 @@ float getCurvature(double posex, double posey, double posetheta, double otherx, 
     // return curvature
     return side * ((2 * x) / (d * d));
 }
-void Chassis::moveToPoint(float x1, float y1, int timeout, float maxSpeed){
+void Chassis::moveToPoint(float x1, float y1, int timeout, float maxSpeed,bool async){
     turnPID.reset();
     drivePID.reset();
     

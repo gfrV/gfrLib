@@ -17,8 +17,30 @@
  * arcnonsettle(angle, leftMult, rightMult, maxSpeed = 127) - creates a customizable arc to approach target, but doesnt settle after approaching the target- recommended: use this to chain to another movement afterwards
  * odometry movements getting published after odom is done.
  */
-
-
+pros::Distance distance(10);
+bool triballnear = false;
+bool useraction = false;
+pros::ADIDigitalOut intake1('A');
+pros::ADIDigitalOut intake2('B');
+#define INTAKE_DIST 750
+void detecttriball(){
+    
+    while(true){
+        double distanceval = distance.get();
+            if(distanceval <= INTAKE_DIST){
+                triballnear = true;
+            }else{
+                triballnear = false;
+            }
+        if(triballnear && useraction == false){
+            intake1.set_value(true);
+            intake2.set_value(true);
+        } else{
+            intake1.set_value(false);
+            intake2.set_value(false);
+        }
+    }
+}
 void initialize() {
     
     //auton selector- later
