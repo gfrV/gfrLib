@@ -28,8 +28,7 @@ pros::MotorGroup rightMotors(std::initializer_list<pros::Motor> {
 });
 
 
-//PID Struct
-//kP, kI, kD, iMax(integral max threshold-set to 0 as not neccesary), regular settle error, regular settle time for small error, max settle error, regular settle time for big error, how long the entire movement should take
+
 Chassis chassis(
     //left motors, right motors, inertial sensor
     &leftMotors, &rightMotors, &inertial, 

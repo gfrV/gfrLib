@@ -12,6 +12,23 @@
 #define M_1_PI		0.31830988618379067154
 #define M_2_PI		0.63661977236758134308
 
+/**
+ * @brief Struct for chassis
+ *
+ * Set up sensors to move around your bot!
+ *
+ * @param leftMotors left motors of the base
+ * @param rightMotors right motors of the base
+ * @param inertial imu
+ * @param wheelDiameter the diameter of your wheel. sizes come in(2.75, 3.25, 4(new wheels), 4.125(old wheels))
+ * @param gearRatio external gear ratio; ie. input gear/output gear
+ * @param drivePID PID used for lateral movements
+ * @param turnPID PID used for turn movements
+ * @param smallTurnPID PID used for smaller turn movements; you can set this to the same as the turnPID if you want, this is used to fine tune small turns.
+ * @param swingPID PID used for swing movements
+ * @param arcPID PID used for arc movements
+ * @param headingPID PID used to keep the robot at a certain heading during movements
+ */
 Chassis::Chassis(pros::MotorGroup* leftMotors, pros::MotorGroup* rightMotors, pros::IMU* inertial, const float wheelDiameter, const float trackWidth,
                  const float gearRatio, PID drivePID, PID backwardPID, PID turnPID, PID smallturnPID,PID swingPID, PID arcPID, PID headingPID)
     : leftMotors(leftMotors), rightMotors(rightMotors), imu(inertial), wheelDiameter(wheelDiameter),trackWidth(trackWidth), gearRatio(gearRatio),
@@ -19,26 +36,13 @@ Chassis::Chassis(pros::MotorGroup* leftMotors, pros::MotorGroup* rightMotors, pr
     this->leftMotors->set_encoder_units(pros::E_MOTOR_ENCODER_ROTATIONS);
     this->rightMotors->set_encoder_units(pros::E_MOTOR_ENCODER_ROTATIONS);
 }
-void Chassis::waitUntilDist(float dist) {
-    // do while to give the thread time to start
-    do pros::delay(10);
-    while (distTravelled <= dist && distTravelled != -1);
-} 
-Pose odomPose(0,0,0);
-float radToDeg(float rad) { return rad * 180 / M_PI; }
-float degToRad(float deg) { return deg * M_PI / 180; }
-static float rollAngle180(float angle) {
-    while (angle < -180) {
-        angle += 360;
-    }
 
-    while (angle >= 180) {
-        angle -= 360;
-    }
 
-    return angle;
-}
 /*========================================================INTIALIZE----------------------------------------------------------*/
+Pose odomPose(0,0,0);
+/**
+    * @brief calibrate chassis
+*/
 void Chassis::calibrate() {
     imu->reset();
     leftMotors->tare_position();
@@ -50,6 +54,8 @@ void Chassis::calibrate() {
         double prevTheta= 0;
         x = 0;
         y = 0;
+        heading = 0;
+        
         while(true){
             double left = leftMotors->get_positions()[0]* wheelDiameter * M_PI * gearRatio;
             double right = rightMotors->get_positions()[0]* wheelDiameter * M_PI * gearRatio;;
@@ -67,10 +73,21 @@ void Chassis::calibrate() {
     });
     
 }
-
+/**
+         * @brief set the heading of the bot specifically- pain to always change points when you just have to change heading.
+         * 
+         * @param heading set heading in degrees
+        */
 void Chassis::setHeading(float heading) {
     imu->set_heading(heading);
 }
+/**
+         * @brief sets the odometry pose of the bot
+         * 
+         * @param x1 set the x value
+         * @param y1 set the y value
+         * @param theta1 set the theta value(in degrees)
+        */
 
 void Chassis::setPose(float x1, float y1, float theta1) {
     x = x1;
@@ -78,24 +95,91 @@ void Chassis::setPose(float x1, float y1, float theta1) {
     imu->set_heading(theta1);
 }
 
-
+/**
+         * @brief moves the bot using tank fashion(left controls leftside of the base, right controls rightside of the base)
+         * 
+         * @param left left power
+         * @param right right power
+        */
 void Chassis::tank(float left, float right) {
     leftMotors->move(left);
     rightMotors->move(right);
 }
-
+/**
+         * @brief moves the bot using arcade fashion(lateral controls forward/backward movements while angular puts turn bias on the powers)
+         * 
+         * @param lateral left power
+         * @param angular right power
+        */
 void Chassis::arcade(float lateral, float angular) {
     double leftmotorsmove = lateral + angular;
     double rightmotorsmove = lateral - angular;
     leftMotors->move(leftmotorsmove);
     rightMotors->move(rightmotorsmove);
 }
+/*========================================================ASYNC ACTION----------------------------------------------------------*/
+void Chassis::waitUntil(float dist) {
+    // do while to give the thread time to start
+    do pros::delay(10);
+    while (distTravelled <= dist && distTravelled != -1);
+} 
+void Chassis::endMotion() {
+    // move the "queue" forward 1
+    this->motionRunning = this->motionQueued;
+    this->motionQueued = false;
+
+    // permit queued motion to run
+    this->mutex.give();
+}
+void Chassis::waitUntilDone() {
+    do pros::delay(10);
+    while (distTravelled != -1);
+}
+void Chassis::cancelMotion() {
+    this->motionRunning = false;
+    pros::delay(10); // give time for motion to stop
+}
+void Chassis::requestMotionStart() {
+    if (this->isInMotion()) this->motionQueued = true; // indicate a motion is queued
+    else this->motionRunning = true; // indicate a motion is running
+
+    // wait until this motion is at front of "queue"
+    this->mutex.take(TIMEOUT_MAX);
+
+    // this->motionRunning should be true
+    // and this->motionQueued should be false
+    // indicating this motion is running
+}
+void Chassis::cancelAllMotions() {
+    this->motionRunning = false;
+    this->motionQueued = false;
+    pros::delay(10); // give time for motion to stop
+}
+
+bool Chassis::isInMotion() const { return this->motionRunning; }
 
 
 
 
 /*----------------------------------------------------REGULAR MOVE FUNCTION--------------------------------------------------------------*/
+/**
+         * @brief moves the bot forward using forwards or backwards PID
+         * 
+         * @param distance distance the bot should move to(in inches)
+         * @param maxSpeed the max speed the robot should travel in(out of 127). 
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+        */
 void Chassis::move(float distance, float maxSpeed,bool async) {
+    this->requestMotionStart();
+    // were all motions cancelled?
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&]() { move(distance, maxSpeed, false); });
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     drivePID.reset();
     backwardPID.reset();
     headingPID.reset();
@@ -134,10 +218,28 @@ void Chassis::move(float distance, float maxSpeed,bool async) {
         pros::delay(20);
     } while (!drivePID.isSettled());
     }
-
     arcade(0, 0);
+    distTravelled = -1;
+    this->endMotion();
 }
+/**
+         * @brief moves the bot forwards or backwards using the forward or backward PID and exits into the user specified next movement
+         * 
+         * @param distance distance the bot should move to(in inches)
+         * @param exitrange how much distance the robot should settle in(ie. want to move 24 inches: distance = 26, exitrange = 2)
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+        */
 void Chassis::move_without_settle(float distance, float exitrange,bool async){
+    this->requestMotionStart();
+    // were all motions cancelled?
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){move_without_settle(distance, exitrange, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     drivePID.reset();
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
@@ -159,8 +261,25 @@ void Chassis::move_without_settle(float distance, float exitrange,bool async){
     arcade(0,0);
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    distTravelled = -1;
+    this->endMotion();
 }
+/**
+         * @brief moves the bot forwards or backwards using the forward or backward PID and exits after a certain time is reached
+         * 
+         * @param distance distance the bot should move to(in inches)
+         * @param timeout how much time the robot should move until 
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+        */
 void Chassis::move_without_settletime(float distance, float timeout,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){move_without_settletime(distance, timeout, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     drivePID.reset();
 
     float beginningLeft = leftMotors->get_positions()[0];
@@ -180,8 +299,26 @@ void Chassis::move_without_settletime(float distance, float timeout,bool async){
     arcade(0,0);
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    distTravelled = -1;
+    this->endMotion();
 }
+/**
+         * @brief moves the bot forwards or backwards using the forward or backward PID while approaching with the target angle
+         * 
+         * @param distance distance the bot should move to(in inches)
+         * @param heading the target heading the robot should approach while moving
+         * @param maxSpeed the max speed the robot should travel in(out of 127). 
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+        */
 void Chassis::movewithheading(float distance, float heading, float maxSpeed,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){movewithheading(distance, heading, maxSpeed, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     drivePID.reset();
     backwardPID.reset();
     headingPID.reset();
@@ -220,11 +357,29 @@ void Chassis::movewithheading(float distance, float heading, float maxSpeed,bool
         pros::delay(20);
     } while (!drivePID.isSettled());
     }
-
     arcade(0, 0);
+    distTravelled = -1;
+    this->endMotion();
 }
 /*----------------------------------------------------TURN FUNCTIONS-------------------------------------------------------------------------*/
+/**
+         * @brief turns the robot to a target angle
+         * 
+         * @param heading target angle
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
 void Chassis::turn(float heading,float maxSpeed,bool async) {
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){turn(heading, maxSpeed, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     turnPID.reset();
 
     do {
@@ -243,10 +398,28 @@ void Chassis::turn(float heading,float maxSpeed,bool async) {
 
         pros::delay(20);
     } while (!turnPID.isSettled());
-
     arcade(0, 0);
+    distTravelled = -1;
+    this->endMotion();
 }
+/**
+         * @brief turns the robot to a target angle using small turn PID.
+         * 
+         * @param heading target angle
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
 void Chassis::turnsmall(float heading, float maxSpeed,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){turnsmall(heading, maxSpeed, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     smallturnPID.reset();
 
     do {
@@ -267,10 +440,30 @@ void Chassis::turnsmall(float heading, float maxSpeed,bool async){
     } while (!smallturnPID.isSettled());
 
     arcade(0, 0);
+    distTravelled = -1;
+    this->endMotion();
 }
-/*-------------------------------------------SWING FUNCTIONS----------------------------------------------------------------*/
 
+/*-------------------------------------------SWING FUNCTIONS----------------------------------------------------------------*/
+/**
+         * @brief swings to a target angle with specific side of base
+         * 
+         * @param heading target angle
+         * @param isLeft true = moves to the target angle left, false = moves to the target angle right
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
 void Chassis::swing(float heading, bool isLeft, float maxSpeed,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){swing(heading, isLeft, maxSpeed, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     swingPID.reset();
     if(isLeft){
         do {
@@ -284,12 +477,14 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed,bool async){
         } else {
             pidOutput = pidOutput;
         }
-        tank(pidOutput, 0);
+        tank(0,pidOutput);
         pros::lcd::print(1, "heading: %f", imu->get_heading());
 
         pros::delay(10);
     } while (!swingPID.isSettled());
     arcade(0, 0);
+    distTravelled = -1;
+    this->endMotion();
     } else{
         do {
         float error = rollAngle180(heading - imu->get_heading());
@@ -302,18 +497,38 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed,bool async){
         } else {
             pidOutput = pidOutput;
         }
-        tank(0, pidOutput);
+        tank(pidOutput, 0);
 
         pros::lcd::print(1, "heading: %f", imu->get_heading());
 
         pros::delay(10);
     } while (!swingPID.isSettled());
     arcade(0, 0);
+    distTravelled = -1;
+    this->endMotion();
     }
 }
 
-
+/**
+         * @brief swings to a target angle with specific side of base. Exits with timeout or if PID is settled.
+         * 
+         * @param heading target angle
+         * @param isLeft true = moves to the target angle left, false = moves to the target angle right
+         * @param timeout how long the movement should take before exiting
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
 void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){swing(heading, isLeft, timeout, false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     swingPID.reset();
     if(isLeft){
         auto start = pros::millis();
@@ -329,6 +544,8 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,boo
     } while ((pros::millis() - start) != timeout);
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    distTravelled = -1;
+    this->endMotion();
     } else{
         auto start = pros::millis();
         do {
@@ -343,11 +560,32 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,boo
     } while ((pros::millis() - start) != timeout);
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    distTravelled = -1;
+    this->endMotion();
     }
 }
 
 /*-----------------------------------------------------ARC FUNCTIONS------------------------------------------------------*/
+/**
+         * @brief does a circular arc to target heading using a ratio on the PID outputs.
+         * 
+         * @param heading target angle
+         * @param leftMult 0< leftMult <1 ratio of left side pid output
+         * @param rightMult 0<rightMult<1 ratio of right side pid output
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
 void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpeed,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){arc(heading, leftMult, rightMult, maxSpeed,false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     arcPID.reset();
         do {
         float error = rollAngle180(heading - imu->get_heading());
@@ -364,9 +602,29 @@ void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpe
     arcade(0,0);
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    distTravelled = -1;
+    this->endMotion();
     }
-
+/**
+         * @brief does a circular arc to target heading using a ratio on the PID outputs, doesnt settle(can link to next movement to make it fluid)
+         * 
+         * @param heading target angle
+         * @param leftMult 0< leftMult <1 ratio of left side pid output
+         * @param rightMult 0<rightMult<1 ratio of right side pid output
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
 void Chassis::arcnonsettle(float heading, double leftMult, double rightMult, float maxSpeed,bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){arcnonsettle(heading, leftMult, rightMult, maxSpeed,false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     arcPID.reset();
         do {
         float error = rollAngle180(heading - imu->get_heading());
@@ -383,19 +641,29 @@ void Chassis::arcnonsettle(float heading, double leftMult, double rightMult, flo
     
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    distTravelled = -1;
+    this->endMotion();
     }
-inline double boundAngleRadians(double angle) {
-    angle = fmod(angle, M_PI_2);
-    if (angle < -M_PI) angle += 2*M_PI;
-    if (angle > M_PI) angle -= 2*M_PI;
-    return angle;
-}
 
-inline double deltaInHeading(double targetHeading, double currentHeading) {
-  return boundAngleRadians(targetHeading - currentHeading);
-}
-
-void Chassis::radiusarc(float heading, float radius, float maxSpeed){
+/**
+         * @brief uses a preset radius to move the robot to a certain angle using radius(in inches)
+         * 
+         * @param heading target angle
+         * @param radius imaginary radius distance from a point that the robot is circling around
+         * @param maxSpeed max speed the robot should move at
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         
+         * 
+        */
+void Chassis::radiusarc(float heading, float radius, float maxSpeed, bool async){
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&](){radiusarc(heading, radius, maxSpeed,false);});
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     arcPID.reset();
     headingPID.reset();
     bool reverse = radius < 0;
@@ -447,56 +715,88 @@ void Chassis::radiusarc(float heading, float radius, float maxSpeed){
     }
 
     tank(0,0);
+    distTravelled = -1;
+    this->endMotion();
 }
 /*------------------------------------------------------ODOM MOVEMENTS------------------------------------------------------------*/
-float distance(double x1, double y1, double x2, double y2) 
-{ 
-    // Calculating distance 
-    return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2) * 1.0); 
-} 
+/**
+         * @brief turns to a certain point(x,y)
+         * 
+         * @param x1 the x coordinate in inches
+         * @param y1 the y coordinate in inches
+         * @param timeout how long the entire movement should take
+         * @param forwards robot moving forwards or backwards during movement
+         * @param maxSpeed how fast the robot should move during the movement
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
 
-float pointAngleDifference(double x1, double y1, double x2, double y2){
-    return std::atan2(y2- y1, x2 - x1); 
-}
-//odom movements
+         * 
+        */
+void Chassis::turnToPoint(float x1, float y1, int timeout, bool forwards, float maxSpeed,bool async){
+    this->requestMotionStart();
+    // were all motions cancelled?
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&]() { turnToPoint(x1, y1, timeout, forwards, maxSpeed, false); });
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
+    float targetTheta;
+    float deltaX, deltaY, deltaTheta;
+    float motorPower;
+    float startTheta = heading;
+    std::uint8_t compState = pros::competition::get_status();
+    distTravelled = 0;
+    turnPID.reset();
+    auto start = pros::millis();
+    // main loop
+    while ((pros::millis() - start < timeout) && !turnPID.isSettled() && this->motionRunning) {
+        // update variables
+        Pose pose = odomPose;
+        pose.theta = (forwards) ? fmod(pose.theta, 360) : fmod(pose.theta - 180, 360);
 
+        // update completion vars
+        distTravelled = fabs(angleError(pose.theta, startTheta, false));
 
+        deltaX = x - pose.x;
+        deltaY = y - pose.y;
+        targetTheta = fmod(radToDeg(M_PI_2 - atan2(deltaY, deltaX)), 360);
 
+        // calculate deltaTheta
+        deltaTheta = angleError(targetTheta, pose.theta, false);
 
+        // calculate the speed
+        motorPower = turnPID.update(0,-deltaTheta);
+
+        // cap the speed
+        if (motorPower > maxSpeed) motorPower = maxSpeed;
+        else if (motorPower < -maxSpeed) motorPower = -maxSpeed;
+
+        // move the drivetrain
+        leftMotors->move(motorPower);
+        rightMotors->move(-motorPower);
+
+        pros::delay(10);
+    }
+
+    // stop the drivetrain
+    leftMotors->move(0);
+    rightMotors->move(0);
+    // set distTraveled to -1 to indicate that the function has finished
+    distTravelled = -1;
+    this->endMotion();
     
-void Chassis::turnToPoint(float x1, float y1, int timeout, float maxSpeed,bool async){
-        //turn part
-        float targetTheta = fmod(radToDeg(M_PI_2 - atan2(y1, x1)), 360);
-        turn(rollAngle180(radToDeg(targetTheta)), maxSpeed);
-    
 }
-
-float Chassis::angleError(float angle1, float angle2, bool radians) {
-    float max = radians ? 2 * M_PI : 360;
-    float half = radians ? M_PI : 180;
-    angle1 = fmod(angle1, max);
-    angle2 = fmod(angle2, max);
-    float error = angle1 - angle2;
-    if (error > half) error -= max;
-    else if (error < -half) error += max;
-    return error;
-}
-int sgn(float x) {
-    if (x < 0) return -1;
-    else return 1;
-}
-float getCurvature(double posex, double posey, double posetheta, double otherx, double othery, double othertheta) {
-    // calculate whether the pose is on the left or right side of the circle
-    float side = sgn(std::sin(posetheta) * (otherx - othery) - std::cos(posetheta) * (othery - posey));
-    // calculate center point and radius
-    float a = -std::tan(posetheta);
-    float c = std::tan(posetheta) * posex - posey;
-    float x = std::fabs(a * otherx + othery + c) / std::sqrt((a * a) + 1);
-    float d = std::hypot(otherx - posex, othery - posey);
-
-    // return curvature
-    return side * ((2 * x) / (d * d));
-}
+ /**
+         * @brief moves the bot to a certain point on the field
+         * 
+         * @param x1 target x coordinate in inches
+         * @param y1 target y coordinate in inches
+         * @param timeout target y coordinate in inches
+         * @param maxSpeed the max speed the robot should travel in(out of 127). 
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+        */
 void Chassis::moveToPoint(float x1, float y1, int timeout, float maxSpeed,bool async){
     turnPID.reset();
     drivePID.reset();
@@ -505,7 +805,16 @@ void Chassis::moveToPoint(float x1, float y1, int timeout, float maxSpeed,bool a
     float prevAngularPower = 0;
     bool close = false;
     uint32_t start = pros::millis();
-    
+    this->requestMotionStart();
+    // were all motions cancelled?
+    if (!this->motionRunning) return;
+    // if the function is async, run it in a new task
+    if (async) {
+        pros::Task task([&]() { moveToPoint(x1,y1, timeout, maxSpeed, false); });
+        this->endMotion();
+        pros::delay(10); // delay to give the task time to start
+        return;
+    }
     while(((start < timeout) || (!drivePID.isSettled() && !turnPID.isSettled()))){
         heading = std::fmod(heading, 360);
 
@@ -544,16 +853,34 @@ void Chassis::moveToPoint(float x1, float y1, int timeout, float maxSpeed,bool a
         pros::delay(10);
     }
     tank(0,0);
+    distTravelled = -1;
+    this->endMotion();
 
 }
+/**
+         * @brief moves the bot to a target pose(x,y,theta)
+         * 
+         * @param x1 target x coordinate in inches
+         * @param y1 target y coordinate in inches
+         * @param theta1 target angle
+         * @param timeout target y coordinate in inches
+         * @param forwards movement is forwards or backwards
+         * @param maxSpeed the max speed the robot should travel in(out of 127). 
+         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         * @param chasePower how fast the robot should go during the movement. If its higher, the accuracy of the movement is less.
+         * @param lead 0 < lead < 1 how much the movement should curve
+         * @param smoothness 0 < smoothness < 1 how smooth the movement should be. 
+         * 
+        */
 void Chassis::moveToPose(float x1, float y1, float theta1, int timeout, bool forwards, float maxSpeed, bool async,float chasePower,
-                          float lead, float smoothness, bool linearexit, float linearexitrange) {
-    if (!mutex.take(10)) return;
+                          float lead, float smoothness) {
+    this->requestMotionStart();
+    // were all motions cancelled?
+    if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { moveToPose(x1, y1, theta1, timeout, forwards, maxSpeed, async, chasePower,
-                           lead,  smoothness,  linearexit,  linearexitrange); });
-        mutex.give();
+        pros::Task task([&]() { moveToPose(x1, y1, theta1, timeout, forwards, maxSpeed, false, chasePower, lead, smoothness); });
+        this->endMotion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
@@ -603,11 +930,7 @@ void Chassis::moveToPose(float x1, float y1, float theta1, int timeout, bool for
         // calculate error
         float angularError = angleError(pointAngleDifference(carrotX, carrotY, currX, currY), currTheta, true); // angular error
         float linearError = distance(carrotX, carrotY,currX, currY) * cos(angularError); // linear error
-        if (linearexit=true && fabs(linearError)>linearexitrange) {
-            Chassis::leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-            Chassis::rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-            break;
-        } 
+        
         if (close) angularError = angleError(targetTheta, currTheta, true); // settling behavior
         if (!forwards) linearError = -linearError;
         
@@ -644,7 +967,7 @@ void Chassis::moveToPose(float x1, float y1, float theta1, int timeout, bool for
     
     tank(0,0);
     distTravelled = -1;
-    mutex.give();
+    this->endMotion();
 }
 
 
@@ -708,7 +1031,18 @@ int Chassis::FindClosest(Pose pose, std::vector<Pose> pPath, int prevCloseIndex)
     }
     return closeIndex;
 }
+/**
+         * @brief follows path using ramsete(std::vector<Pose>{})
+         * 
+         * @param pPath list of points the robot should follow
+         * @param targetLinVel in RPM, how fast the robot should move linear wise.
+         * @param targetAngVel in radians/sec, how fast the angular velocity the robot should have during turns or curves
+         * @param timeOut how long the entire movement should take
+         * @param errorRange how much distance the robot can ignore before moving on to the next point
+         * @param beta 
 
+         * 
+        */
 void Chassis::followPath(std::vector<Pose> pPath, float targetLinVel, float targetAngVel, float timeOut, float errorRange, float beta, float zeta, bool reversed){
     float offFromPose = INT_MAX;
     
