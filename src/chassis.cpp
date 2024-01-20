@@ -118,10 +118,10 @@ void Chassis::arcade(float lateral, float angular) {
     rightMotors->move(rightmotorsmove);
 }
 /*========================================================ASYNC ACTION----------------------------------------------------------*/
-void Chassis::waitUntil(float dist) {
+void Chassis::waitUntil(float error) {
     // do while to give the thread time to start
     do pros::delay(10);
-    while (distTravelled <= dist && distTravelled != -1);
+    while (distTravelled <= error && distTravelled != -1);
 } 
 void Chassis::endMotion() {
     // move the "queue" forward 1
@@ -188,9 +188,11 @@ void Chassis::move(float distance, float maxSpeed,bool async) {
     float angle = imu->get_heading();
     if(distance < 0){
         do {
+        
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
         float deltaRight = rightMotors->get_positions()[0] - beginningRight;
         float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
+        distTravelled = distanceTravelled;
         float error = rollAngle180(angle - imu->get_heading());
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = backwardPID.update(distance, distanceTravelled);
@@ -203,10 +205,11 @@ void Chassis::move(float distance, float maxSpeed,bool async) {
     } while (!backwardPID.isSettled());
     } else{
         do {
-            
+         
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
         float deltaRight = rightMotors->get_positions()[0] - beginningRight;
         float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
+        distTravelled = distanceTravelled;
         float error = rollAngle180(angle - imu->get_heading());
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = drivePID.update(distance, distanceTravelled);
@@ -246,9 +249,11 @@ void Chassis::move_without_settle(float distance, float exitrange,bool async){
     float error;
     auto start = pros::millis();
     do {
+        
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
         float deltaRight = rightMotors->get_positions()[0] - beginningRight;
         float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
+        distTravelled = distanceTravelled;
         error = distance-distanceTravelled;
         float pidOutput = drivePID.update(distance, distanceTravelled);
         if(fabs(error) <= exitrange){
@@ -287,10 +292,11 @@ void Chassis::move_without_settletime(float distance, float timeout,bool async){
 
     auto start = pros::millis();
     do {
+        
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
         float deltaRight = rightMotors->get_positions()[0] - beginningRight;
         float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
-
+        distTravelled = distanceTravelled;
         float pidOutput = drivePID.update(distance, distanceTravelled);
         arcade(pidOutput, 0);
 
@@ -327,9 +333,11 @@ void Chassis::movewithheading(float distance, float heading, float maxSpeed,bool
     float angle = heading;
     if(distance < 0){
         do {
+        
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
         float deltaRight = rightMotors->get_positions()[0] - beginningRight;
         float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
+        distTravelled = distanceTravelled;
         float error = rollAngle180(angle - imu->get_heading());
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = backwardPID.update(distance, distanceTravelled);
@@ -342,10 +350,11 @@ void Chassis::movewithheading(float distance, float heading, float maxSpeed,bool
     } while (!backwardPID.isSettled());
     } else{
         do {
-            
+       
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
         float deltaRight = rightMotors->get_positions()[0] - beginningRight;
         float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
+        distTravelled = distanceTravelled;
         float error = rollAngle180(angle - imu->get_heading());
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = drivePID.update(distance, distanceTravelled);
@@ -383,7 +392,9 @@ void Chassis::turn(float heading,float maxSpeed,bool async) {
     turnPID.reset();
 
     do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = turnPID.update(0, -error);
         if (pidOutput>maxSpeed) {
             pidOutput=maxSpeed; 
@@ -423,7 +434,9 @@ void Chassis::turnsmall(float heading, float maxSpeed,bool async){
     smallturnPID.reset();
 
     do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = smallturnPID.update(0, -error);
         if (pidOutput>maxSpeed) {
             pidOutput=maxSpeed; 
@@ -467,7 +480,9 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed,bool async){
     swingPID.reset();
     if(isLeft){
         do {
+       
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = swingPID.update(0, -error);
         Chassis::rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         if (pidOutput>maxSpeed) {
@@ -487,7 +502,9 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed,bool async){
     this->endMotion();
     } else{
         do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = swingPID.update(0, -error);
         Chassis::leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         if (pidOutput>maxSpeed) {
@@ -533,7 +550,9 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,boo
     if(isLeft){
         auto start = pros::millis();
         do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = swingPID.update(0, -error);
         Chassis::leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         tank(0, pidOutput);
@@ -549,7 +568,9 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,boo
     } else{
         auto start = pros::millis();
         do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = swingPID.update(0, -error);
         Chassis::rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         tank(pidOutput, 0);
@@ -588,7 +609,9 @@ void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpe
     }
     arcPID.reset();
         do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = arcPID.update(0, -error);
         if(pidOutput > maxSpeed) pidOutput = maxSpeed;
         if(pidOutput <-maxSpeed) pidOutput = -maxSpeed;
@@ -627,7 +650,9 @@ void Chassis::arcnonsettle(float heading, double leftMult, double rightMult, flo
     }
     arcPID.reset();
         do {
+        
         float error = rollAngle180(heading - imu->get_heading());
+        distTravelled = error;
         float pidOutput = arcPID.update(0, -error);
         if(pidOutput > maxSpeed) pidOutput = maxSpeed;
         if(pidOutput <-maxSpeed) pidOutput = -maxSpeed;
@@ -679,16 +704,18 @@ void Chassis::radiusarc(float heading, float radius, float maxSpeed, bool async)
     auto start = pros::millis();
 
     while (!arcPID.isSettled()) {
+        
         double largerDistanceCurrent = (deltaTheta > 0 != reverse) ? rightMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio : leftMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio;
         largerDistanceCurrent = fabs(largerDistanceCurrent);
         double distanceError = largerDistanceTotal - largerDistanceCurrent;
-
+        
         double fasterWheelSpeed = arcPID.update(distanceError,0);
         double slowerWheelSpeed = fasterWheelSpeed * slowerWheelRatio;
 
         double targetTheta = deltaTheta * (largerDistanceCurrent / largerDistanceTotal);
 
         double headingError = rollAngle180(deltaInHeading(targetTheta, imu->get_heading()));
+        distTravelled = headingError;
         double headingCorrection = headingPID.update(0, -headingError);
 
         double left, right;
@@ -755,7 +782,7 @@ void Chassis::turnToPoint(float x1, float y1, int timeout, bool forwards, float 
         // update variables
         Pose pose = odomPose;
         pose.theta = (forwards) ? fmod(pose.theta, 360) : fmod(pose.theta - 180, 360);
-
+        distTravelled += pose.distance(Pose(x1,y1));
         // update completion vars
         distTravelled = fabs(angleError(pose.theta, startTheta, false));
 
@@ -817,7 +844,7 @@ void Chassis::moveToPoint(float x1, float y1, int timeout, float maxSpeed,bool a
     }
     while(((start < timeout) || (!drivePID.isSettled() && !turnPID.isSettled()))){
         heading = std::fmod(heading, 360);
-
+        distTravelled += 10;
         //update error
         float deltaX = x1 - x;
         float deltaY = y1 - y;

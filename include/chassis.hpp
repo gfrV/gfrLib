@@ -240,7 +240,7 @@ class Chassis {
          *
          * @param dist the distance the robot needs to travel before returning
          */
-        void waitUntil(float dist);
+        void waitUntil(float error);
         /**
          * @brief Wait until the robot has completed the path
          *
