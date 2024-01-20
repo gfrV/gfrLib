@@ -33,6 +33,7 @@ class Chassis {
         void turnsmall(float heading, float maxSpeed = 127,bool async = false);
         void swing(float heading, bool isLeft, float maxSpeed=127,bool async = false);
         void arc(float heading, double leftMult, double rightMult, float maxSpeed = 127,bool async = false);
+        void radiusarc(float heading, float radius, float maxSpeed = 127);
         void arcnonsettle(float heading, double leftMult, double rightMult, float maxSpeed = 127,bool async = false);
         void move_without_settle(float distance, float exitrange,bool async = false);
         void swing_without_settle(float heading, bool isLeft, float timeout,bool async = false);

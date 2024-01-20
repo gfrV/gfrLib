@@ -346,7 +346,7 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float timeout,boo
     }
 }
 
-//arc 
+/*-----------------------------------------------------ARC FUNCTIONS------------------------------------------------------*/
 void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpeed,bool async){
     arcPID.reset();
         do {
@@ -384,6 +384,70 @@ void Chassis::arcnonsettle(float heading, double leftMult, double rightMult, flo
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     }
+inline double boundAngleRadians(double angle) {
+    angle = fmod(angle, M_PI_2);
+    if (angle < -M_PI) angle += 2*M_PI;
+    if (angle > M_PI) angle -= 2*M_PI;
+    return angle;
+}
+
+inline double deltaInHeading(double targetHeading, double currentHeading) {
+  return boundAngleRadians(targetHeading - currentHeading);
+}
+
+void Chassis::radiusarc(float heading, float radius, float maxSpeed){
+    arcPID.reset();
+    headingPID.reset();
+    bool reverse = radius < 0;
+    radius = fabs(radius);
+
+    double deltaTheta = deltaInHeading(heading, imu->get_heading());
+
+    double totalDistance = fabs(deltaTheta) * radius;
+    double HTW = trackWidth / 2.0;
+    double slowerWheelRatio = (radius - HTW) / (radius + HTW);
+
+    double largerDistanceTotal = (radius + HTW) * fabs(deltaTheta);
+    auto start = pros::millis();
+
+    while (!arcPID.isSettled()) {
+        double largerDistanceCurrent = (deltaTheta > 0 != reverse) ? rightMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio : leftMotors->get_positions()[0] * wheelDiameter * M_PI * gearRatio;
+        largerDistanceCurrent = fabs(largerDistanceCurrent);
+        double distanceError = largerDistanceTotal - largerDistanceCurrent;
+
+        double fasterWheelSpeed = arcPID.update(distanceError,0);
+        double slowerWheelSpeed = fasterWheelSpeed * slowerWheelRatio;
+
+        double targetTheta = deltaTheta * (largerDistanceCurrent / largerDistanceTotal);
+
+        double headingError = rollAngle180(deltaInHeading(targetTheta, imu->get_heading()));
+        double headingCorrection = headingPID.update(0, -headingError);
+
+        double left, right;
+        if (deltaTheta < 0 != reverse) {
+            left = fasterWheelSpeed;
+            right = slowerWheelSpeed;
+        } else {
+            left = slowerWheelSpeed;
+            right = fasterWheelSpeed;
+        }
+
+        if (reverse) {
+            left = -1;
+            right= -1;
+        }
+
+        // IMU PID Correction:
+        left -= headingCorrection; 
+        right += headingCorrection;
+
+        tank(left, right);
+
+        pros::delay(10);
+    }
+
+    tank(0,0);
+}
 /*------------------------------------------------------ODOM MOVEMENTS------------------------------------------------------------*/
 float distance(double x1, double y1, double x2, double y2) 
 { 
