@@ -2,9 +2,9 @@
 
 #include "pros/motors.hpp"
 #include "pros/imu.hpp"
-#include "pose.hpp"
-#include "pid.hpp"
-#include "util.hpp"
+#include "util/pose.hpp"
+#include "util/pid.hpp"
+#include "util/util.hpp"
 #include <functional>
 #include "opcontrol.hpp"
 

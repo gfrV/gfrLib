@@ -1,4 +1,4 @@
-#include "gfrLib/pid.hpp"
+#include "gfrLib/util/pid.hpp"
 
 #include "pros/rtos.hpp"
 

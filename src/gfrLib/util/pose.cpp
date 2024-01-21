@@ -9,7 +9,7 @@
  *
  */
 #include <math.h>
-#include "gfrLib/pose.hpp"
+#include "gfrLib/util/pose.hpp"
 
 /**
  * @brief Create a new pose
