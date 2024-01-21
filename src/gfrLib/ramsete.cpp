@@ -16,7 +16,7 @@ int Chassis::FindClosest(Pose pose, std::vector<Pose> pPath, int prevCloseIndex)
     return closeIndex;
 }
 
-// ramesete
+
 void Chassis::moveChassis(float linearVelocity, float angularVelocity) {
     // compute left and right velocities
     float leftVelocity = (2 * linearVelocity - angularVelocity * trackWidth) / 2; // inches/sec

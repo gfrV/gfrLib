@@ -3,3 +3,4 @@
 #include "pose.hpp"
 #include "util.hpp"
 #include "opcontrol.hpp"
+#include "odometry.hpp"
