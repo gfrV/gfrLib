@@ -29,7 +29,7 @@ pros::MotorGroup rightMotors(std::initializer_list<pros::Motor> {
 
 
 
-Chassis chassis(
+gfrLib::Chassis chassis(
     //left motors, right motors, inertial sensor
     &leftMotors, &rightMotors, &inertial, 
     //wheel diameter, track width, gear ratio
