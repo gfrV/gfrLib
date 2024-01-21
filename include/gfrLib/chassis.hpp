@@ -120,10 +120,11 @@ class Chassis {
          * @param chasePower how fast the robot should go during the movement. If its higher, the accuracy of the movement is less.
          * @param lead 0 < lead < 1 how much the movement should curve
          * @param smoothness 0 < smoothness < 1 how smooth the movement should be. 
+         * @param gLead weight for ghost point
          * 
         */
         void move_to_pose(float x1, float y1, float theta1, int timeout, bool forwards, float maxSpeed, bool async,float chasePower,
-                          float lead, float smoothness);
+                          float lead, float smoothness, float gLead = 0);
 
         /**
          * @brief turns the robot to a target angle

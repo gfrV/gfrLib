@@ -64,8 +64,6 @@ void Chassis::set_pose(float x1, float y1, float theta1) {
     imu->set_heading(theta1);
 }
 
-
-
 void Chassis::move(float distance, float maxSpeed, bool async) {
     // dummy PID
     PID drivingPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -276,19 +274,19 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed, bool async) {
     swingPID.reset();
 
     do {
-        //calculate error
+        // calculate error
         float error = rollAngle180(heading - imu->get_heading());
-        //set distTravelled to error for async purposes
+        // set distTravelled to error for async purposes
         distTravelled = error;
-        //calculate pidOutput
+        // calculate pidOutput
         float pidOutput = swingPID.update(0, -error);
-        //hold specified motor to hold so swing doesnt cause drift
-        if(isLeft){
+        // hold specified motor to hold so swing doesnt cause drift
+        if (isLeft) {
             leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
-        } else{
+        } else {
             rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         }
-        //cap outputs
+        // cap outputs
         if (pidOutput > maxSpeed) {
             pidOutput = maxSpeed;
         } else if (pidOutput < -maxSpeed) {
@@ -296,7 +294,7 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed, bool async) {
         } else {
             pidOutput = pidOutput;
         }
-        //check which way the swing should turn
+        // check which way the swing should turn
         if (isLeft) {
             tank(0, pidOutput);
         } else {
@@ -315,28 +313,28 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float degreeRange
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { swing_without_settle(heading, isLeft, degreeRange,maxSpeed, false); });
+        pros::Task task([&]() { swing_without_settle(heading, isLeft, degreeRange, maxSpeed, false); });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
     swingPID.reset();
-    //globalize error for exiting
+    // globalize error for exiting
     float error = 0;
     do {
-        //calculate error
+        // calculate error
         error = rollAngle180(heading - imu->get_heading());
-        //set distTravelled to error for async purposes
+        // set distTravelled to error for async purposes
         distTravelled = error;
-        //calculate pid output
+        // calculate pid output
         float pidOutput = swingPID.update(0, -error);
-        //hold specified motor to hold so swing doesnt cause drift
-        if(isLeft){
+        // hold specified motor to hold so swing doesnt cause drift
+        if (isLeft) {
             leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
-        } else{
+        } else {
             rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         }
-        //cap max speeds
+        // cap max speeds
         if (pidOutput > maxSpeed) {
             pidOutput = maxSpeed;
         } else if (pidOutput < -maxSpeed) {
@@ -344,19 +342,19 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float degreeRange
         } else {
             pidOutput = pidOutput;
         }
-        //check which way the swing should turn
+        // check which way the swing should turn
         if (isLeft) {
             tank(0, pidOutput);
         } else {
             tank(pidOutput, 0);
         }
-        //delay
+        // delay
         pros::delay(20);
     } while (!swingPID.isSettled() || fabs(error) > degreeRange);
-    //coast motors
+    // coast motors
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-    //set distTravelled to -1 to let async queue know
+    // set distTravelled to -1 to let async queue know
     distTravelled = -1;
     this->end_motion();
 }
@@ -372,28 +370,28 @@ void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpe
     }
     arcPID.reset();
     do {
-        //calculate error
-        float error = rollAngle180(heading - imu->get_heading()); 
-        //set distTravelled to error for async purposes
+        // calculate error
+        float error = rollAngle180(heading - imu->get_heading());
+        // set distTravelled to error for async purposes
         distTravelled = error;
-        //calculate pid outputs
+        // calculate pid outputs
         float pidOutput = arcPID.update(0, -error);
-        //cap speeds
+        // cap speeds
         if (pidOutput > maxSpeed) pidOutput = maxSpeed;
         if (pidOutput < -maxSpeed) pidOutput = -maxSpeed;
-        //break if error is less than one
+        // break if error is less than one
         if (fabs(error) < 1) break;
-        //run
+        // run
         tank(pidOutput * leftMult, pidOutput * rightMult);
-        //delay
+        // delay
         pros::delay(10);
     } while (!arcPID.isSettled());
-    //stop motors
+    // stop motors
     arcade(0, 0);
-    //coast em
+    // coast em
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-    //set distTravelled to -1 to let async queue know
+    // set distTravelled to -1 to let async queue know
     distTravelled = -1;
     this->end_motion();
 }
@@ -409,25 +407,25 @@ void Chassis::arc_non_settle(float heading, double leftMult, double rightMult, f
     }
     arcPID.reset();
     do {
-        //calculate error
+        // calculate error
         float error = rollAngle180(heading - imu->get_heading());
-        //set distTravelled for async purposes
+        // set distTravelled for async purposes
         distTravelled = error;
-        //calculate pid outputs
+        // calculate pid outputs
         float pidOutput = arcPID.update(0, -error);
-        //cap max speeds
+        // cap max speeds
         if (pidOutput > maxSpeed) pidOutput = maxSpeed;
         if (pidOutput < -maxSpeed) pidOutput = -maxSpeed;
         if (fabs(error) < 1) break;
-        //run
+        // run
         tank(pidOutput * leftMult, pidOutput * rightMult);
-        //delay
+        // delay
         pros::delay(10);
     } while (!arcPID.isSettled());
-    //coast em
+    // coast em
     leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
     rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-    //set distTravelled to -1 to let async queue know
+    // set distTravelled to -1 to let async queue know
     distTravelled = -1;
     this->end_motion();
 }
@@ -617,22 +615,27 @@ void Chassis::move_to_point(float x1, float y1, int timeout, float maxSpeed, boo
 }
 
 void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool forwards, float maxSpeed, bool async,
-                           float chasePower, float lead, float smoothness) {
+                           float chasePower, float lead, float smoothness, float gLead) {
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task(
-            [&]() { move_to_pose(x1, y1, theta1, timeout, forwards, maxSpeed, false, chasePower, lead, smoothness); });
+        pros::Task task([&]() {
+            move_to_pose(x1, y1, theta1, timeout, forwards, maxSpeed, false, chasePower, lead, smoothness, gLead);
+        });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    // reset pids
     turnPID.reset();
     drivePID.reset();
 
+    // calculate target theta in radians
     double targetTheta = M_PI_2 - degToRad(theta1);
+
+    // prev powers
     float prevLateralPower = 0;
     float prevAngularPower = 0;
 
@@ -641,18 +644,28 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
     float lastposey = y;
     float lastposetheta = heading;
 
-    auto start = pros::millis();
     if (!forwards) targetTheta = fmod(targetTheta + M_PI, 2 * M_PI); // backwards movement
 
     bool close = false;
     if (chasePower == 0) chasePower = 40; // make chasePower globalized in chassis setup
+    // initial carrot
+    double inCarrotX = (x1 - (cos(targetTheta) * lead * distance(x1, y1, x, y))) ;
+    double inCarrotY = (y1 - (sin(targetTheta) * lead * distance(x1, y1, x, y))) ;
+    // if gLead is 0, set glead to 1-dlead
+    if (gLead == 0) { gLead = 1 - lead; }
+    // timer
+    auto start = pros::millis();
+    // loop
     while ((!drivePID.isSettled() || pros::millis() - start < timeout)) {
+        // rename curr odom vals
         double currX = x;
         double currY = y;
         double currHeading = heading; // for reference
         double currTheta = degToRad(heading);
 
+        // if not forwards, add PI(180 deg) so it travels with the side of the bot the other way
         if (!forwards) currTheta += M_PI;
+        // update distTravelled for async purposes
         distTravelled += distance(lastposex, lastposey, currX, currY);
 
         // update prev
@@ -660,11 +673,13 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
         lastposey = currY;
         lastposetheta = currHeading;
 
+        // check if close is true
         if (distance(x1, y1, x, y) < 7.5) { close = true; }
 
         // carrot - 2 times for each part
-        double carrotX = x1 - (cos(targetTheta) * lead * distance(x1, y1, currX, currY));
-        double carrotY = y1 - (sin(targetTheta) * lead * distance(x1, y1, currX, currY));
+        double carrotX = (inCarrotX + (carrotX - inCarrotX) * (1 - gLead));
+        double carrotY = (inCarrotY + (carrotY - inCarrotY) * (1 - gLead));
+
         if (close) { // settle behavior
             x1 = carrotX;
             y1 = carrotY;
@@ -675,6 +690,7 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
             angleError(pointAngleDifference(carrotX, carrotY, currX, currY), currTheta, true); // angular error
         float linearError = distance(carrotX, carrotY, currX, currY) * cos(angularError); // linear error
 
+        // settling behabior
         if (close) angularError = angleError(targetTheta, currTheta, true); // settling behavior
         if (!forwards) linearError = -linearError;
 
@@ -711,8 +727,6 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
     distTravelled = -1;
     this->end_motion();
 }
-
-
 
 void Chassis::follow_path(std::vector<Pose> pPath, float targetLinVel, float targetAngVel, float timeOut,
                           float errorRange, float beta, float zeta, bool reversed) {
