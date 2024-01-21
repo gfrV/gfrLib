@@ -61,9 +61,10 @@ pros::MotorGroup rightMotors(std::initializer_list<pros::Motor> {
  * @param inertial imu
  * @param wheelDiameter the diameter of your wheel. sizes come in(2.75, 3.25, 4(new wheels), 4.125(old wheels))
  * @param gearRatio external gear ratio; ie. input gear/output gear
- *
+ * @param defaultChasePower the default chase power for the move to pose.
+ * 
  */
-driveTrain drivetrain {&leftMotors, &rightMotors, &inertial, wheelDiam, trackWidth, externalGearRatio};
+driveTrain drivetrain {&leftMotors, &rightMotors, &inertial, wheelDiam, trackWidth, externalGearRatio, 30};
 
 /**
  * @brief sets up PID

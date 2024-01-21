@@ -14,7 +14,7 @@ namespace gfrLib {
  * @brief Struct for PID setup
  *
  * @param drivePID PID used for lateral movements
- * @param turnPID PID used for turn movements
+ * @param turnPID PID used for angular movements
  * @param smallTurnPID PID used for smaller turn movements; you can set this to the same as the turnPID if you want,
  * this is used to fine tune small turns.
  * @param swingPID PID used for swing movements
@@ -23,9 +23,7 @@ namespace gfrLib {
  *
  */
 struct pidSetup {
-        pidSetup(PID drivePID, PID backwardPID, PID turnPID, PID smallturnPID, PID swingPID, PID arcPID, PID headingPID)
-            : drivePID(drivePID), backwardPID(backwardPID), turnPID(turnPID), smallturnPID(smallturnPID),
-              swingPID(swingPID), arcPID(arcPID), headingPID(headingPID) {}
+        pidSetup(PID drivePID, PID backwardPID, PID turnPID, PID smallturnPID, PID swingPID, PID arcPID, PID headingPID);
 
         PID drivePID;
         PID turnPID;
@@ -46,13 +44,12 @@ struct pidSetup {
  * @param inertial imu
  * @param wheelDiameter the diameter of your wheel. sizes come in(2.75, 3.25, 4(new wheels), 4.125(old wheels))
  * @param gearRatio external gear ratio; ie. input gear/output gear
+ * @param defaultChasePower the default chase power for the move to pose.
  * 
  */
 struct driveTrain {
         driveTrain(pros::MotorGroup* leftMotors, pros::MotorGroup* rightMotors, pros::IMU* inertial,
-                   const float wheelDiameter, const float trackWidth, const float gearRatio)
-            : leftMotors(leftMotors), rightMotors(rightMotors), imu(inertial), wheelDiameter(wheelDiameter),
-              trackWidth(trackWidth), gearRatio(gearRatio) {}
+                   const float wheelDiameter, const float trackWidth, const float gearRatio, const float defaultChasePower);
 
         pros::MotorGroup* leftMotors;
         pros::MotorGroup* rightMotors;
@@ -60,6 +57,38 @@ struct driveTrain {
         const float wheelDiameter;
         const float trackWidth;
         const float gearRatio;
+        const float defaultChasePower;
+};
+
+/**
+ * @brief Parameters for Chassis::moveToPose
+ *
+ * We use a struct to simplify customization. Chassis::moveToPose has many
+ * parameters and specifying them all just to set one optional param ruins
+ * readability. By passing a struct to the function, we can have named
+ * parameters, overcoming the c/c++ limitation
+ *
+ * @param forwards whether the robot should move forwards or backwards. True by default
+ * @param chasePower how fast the robot will move around corners. Recommended value 2-15.
+ *  0 means use chasePower set in chassis class. 0 by default.
+ * @param lead carrot point multiplier. value between 0 and 1. Higher values result in
+ *  curvier movements. 0.6 by default
+ * @param maxSpeed the maximum speed the robot can travel at. Value between 0-127.
+ *  127 by default
+ * @param minSpeed the minimum speed the robot can travel at. If set to a non-zero value,
+ *  the exit conditions will switch to less accurate but smoother ones. Value between 0-127.
+ *  0 by default
+ * @param earlyExitRange distance between the robot and target point where the movement will
+ *  exit. Only has an effect if minSpeed is non-zero.
+ */
+struct MoveToPoseParams {
+        bool forwards = true;
+        float maxSpeed = 127;
+        float chasePower = 0;
+        float lead = 0.6;
+        float gLead = 0;
+        float smoothness = 1;
+
 };
 
 class Chassis {
@@ -72,6 +101,7 @@ class Chassis {
         PID backwardPID;
         PID arcPID;
 
+        
         /**
          * @brief Struct for chassis
          * 
@@ -175,8 +205,7 @@ class Chassis {
          * @param gLead weight for ghost point
          *
          */
-        void move_to_pose(float x1, float y1, float theta1, int timeout, bool forwards, float maxSpeed, bool async,
-                          float chasePower, float lead, float smoothness, float gLead = 0);
+        void move_to_pose(float x1, float y1, float theta1, float timeout, MoveToPoseParams params = {}, bool async = false);
 
         /**
          * @brief turns the robot to a target angle
@@ -324,6 +353,7 @@ class Chassis {
         void end_motion();
 
     private:
+        const float defaultChasePower;
         void moveChassis(float linearVelocity, float angularVelocity);
         void ramsete(Pose targetPose, Pose currentPose, float targetAngularVelocity, float targetLinearVelocity,
                      float beta, float zeta);

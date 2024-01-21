@@ -15,6 +15,47 @@
 using namespace gfrLib;
 
 /**
+ * @brief Struct for PID setup
+ *
+ * @param drivePID PID used for lateral movements
+ * @param turnPID PID used for angular movements
+ * @param smallTurnPID PID used for smaller turn movements; you can set this to the same as the turnPID if you want,
+ * this is used to fine tune small turns.
+ * @param swingPID PID used for swing movements
+ * @param arcPID PID used for arc movements
+ * @param headingPID PID used to keep the robot at a certain heading during movements
+ *
+ */
+
+pidSetup::pidSetup(PID drivePID, PID backwardPID, PID turnPID, PID smallturnPID, PID swingPID, PID arcPID,
+                   PID headingPID)
+    : drivePID(drivePID), backwardPID(backwardPID), turnPID(turnPID), smallturnPID(smallturnPID), swingPID(swingPID),
+      arcPID(arcPID), headingPID(headingPID) {}
+
+/**
+ * @brief Drivetrain struct
+ *
+ * Set up sensors to move around your bot!
+ *
+ * @param leftMotors left motors of the base
+ * @param rightMotors right motors of the base
+ * @param inertial imu
+ * @param wheelDiameter the diameter of your wheel. sizes come in(2.75, 3.25, 4(new wheels), 4.125(old wheels))
+ * @param gearRatio external gear ratio; ie. input gear/output gear
+ *
+ */
+
+driveTrain::driveTrain(pros::MotorGroup* leftMotors, pros::MotorGroup* rightMotors, pros::IMU* inertial,
+                       const float wheelDiameter, const float trackWidth, const float gearRatio, const float defaultChasePower)
+    : leftMotors(leftMotors), 
+      rightMotors(rightMotors), 
+      imu(inertial), 
+      wheelDiameter(wheelDiameter),
+      trackWidth(trackWidth), 
+      gearRatio(gearRatio),
+      defaultChasePower(defaultChasePower) {}
+
+/**
  * @brief Struct for chassis
  *
  * Set up sensors to move around your bot!
@@ -34,11 +75,20 @@ using namespace gfrLib;
  *
  */
 Chassis::Chassis(driveTrain drivetrain, pidSetup pidsetup)
-    : leftMotors(drivetrain.leftMotors), rightMotors(drivetrain.rightMotors), imu(drivetrain.imu),
-      wheelDiameter(drivetrain.wheelDiameter), trackWidth(drivetrain.trackWidth), gearRatio(drivetrain.gearRatio),
-      drivePID(pidsetup.drivePID), backwardPID(pidsetup.backwardPID), turnPID(pidsetup.turnPID),
-      smallturnPID(pidsetup.smallturnPID), swingPID(pidsetup.swingPID), arcPID(pidsetup.arcPID),
-      headingPID(pidsetup.headingPID) {
+    : leftMotors(drivetrain.leftMotors), 
+      rightMotors(drivetrain.rightMotors), 
+      imu(drivetrain.imu),
+      wheelDiameter(drivetrain.wheelDiameter), 
+      trackWidth(drivetrain.trackWidth), 
+      gearRatio(drivetrain.gearRatio),
+      drivePID(pidsetup.drivePID), 
+      backwardPID(pidsetup.backwardPID), 
+      turnPID(pidsetup.turnPID),
+      smallturnPID(pidsetup.smallturnPID), 
+      swingPID(pidsetup.swingPID), 
+      arcPID(pidsetup.arcPID),
+      headingPID(pidsetup.headingPID),
+      defaultChasePower(drivetrain.defaultChasePower) {
     this->leftMotors->set_encoder_units(pros::E_MOTOR_ENCODER_ROTATIONS);
     this->rightMotors->set_encoder_units(pros::E_MOTOR_ENCODER_ROTATIONS);
 }
@@ -144,7 +194,7 @@ void Chassis::move(float distance, float maxSpeed, bool async) {
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = drivingPID.update(distance, distanceTravelled);
         // cap max speeds
-        if (pidOutputLateral < -maxSpeed) { pidOutputLateral = -maxSpeed; }
+        pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
         pros::delay(20);
@@ -205,7 +255,7 @@ void Chassis::move_without_settle(float distance, float exitrange, float maxSpee
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = drivingPID.update(distance, distanceTravelled);
         // cap max speeds
-        if (pidOutputLateral < -maxSpeed) { pidOutputLateral = -maxSpeed; }
+        pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
         pros::delay(20);
@@ -269,7 +319,7 @@ void Chassis::move_without_settletime(float distance, float timeout, float maxSp
         float pidAngOutput = headingPID.update(0, -error);
         float pidOutputLateral = selectedPID.update(distance, distanceTravelled);
         // cap max speeds
-        if (pidOutputLateral < -maxSpeed) { pidOutputLateral = -maxSpeed; }
+        pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
         pros::delay(20);
@@ -371,15 +421,14 @@ void Chassis::move_to_point(float x1, float y1, int timeout, float maxSpeed, boo
  * @param gLead weight for ghost point
  *
  */
-void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool forwards, float maxSpeed, bool async,
-                           float chasePower, float lead, float smoothness, float gLead) {
+void Chassis::move_to_pose(float x1, float y1, float theta1, float timeout, MoveToPoseParams params, bool async) {
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
         pros::Task task([&]() {
-            move_to_pose(x1, y1, theta1, timeout, forwards, maxSpeed, false, chasePower, lead, smoothness, gLead);
+            move_to_pose(x1, y1, theta1, timeout, params, false);
         });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
@@ -401,15 +450,15 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
     float lastposey = y;
     float lastposetheta = heading;
 
-    if (!forwards) targetTheta = fmod(targetTheta + M_PI, 2 * M_PI); // backwards movement
+    if (!params.forwards) targetTheta = fmod(targetTheta + M_PI, 2 * M_PI); // backwards movement
 
     bool close = false;
-    if (chasePower == 0) chasePower = 40; // make chasePower globalized in chassis setup
+    if (params.chasePower == 0) params.chasePower = defaultChasePower; // make chasePower globalized in chassis setup
     // initial carrot
-    double inCarrotX = (x1 - (cos(targetTheta) * lead * distance(x1, y1, x, y)));
-    double inCarrotY = (y1 - (sin(targetTheta) * lead * distance(x1, y1, x, y)));
+    double inCarrotX = (x1 - (cos(targetTheta) * params.lead * distance(x1, y1, x, y)));
+    double inCarrotY = (y1 - (sin(targetTheta) * params.lead * distance(x1, y1, x, y)));
     // if gLead is 0, set glead to 1-dlead
-    if (gLead == 0) { gLead = 1 - lead; }
+    if (params.gLead == 0) { params.gLead = 1 - params.lead; }
     // timer
     auto start = pros::millis();
     // loop
@@ -421,7 +470,7 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
         double currTheta = degToRad(heading);
 
         // if not forwards, add PI(180 deg) so it travels with the side of the bot the other way
-        if (!forwards) currTheta += M_PI;
+        if (!params.forwards) currTheta += M_PI;
         // update distTravelled for async purposes
         distTravelled += distance(lastposex, lastposey, currX, currY);
 
@@ -434,8 +483,8 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
         if (distance(x1, y1, x, y) < 7.5) { close = true; }
 
         // carrot - 2 times for each part
-        double carrotX = (inCarrotX + (carrotX - inCarrotX) * (1 - gLead));
-        double carrotY = (inCarrotY + (carrotY - inCarrotY) * (1 - gLead));
+        double carrotX = (inCarrotX + (carrotX - inCarrotX) * (1 - params.gLead));
+        double carrotY = (inCarrotY + (carrotY - inCarrotY) * (1 - params.gLead));
 
         if (close) { // settle behavior
             x1 = carrotX;
@@ -449,7 +498,7 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
 
         // settling behabior
         if (close) angularError = angleError(targetTheta, currTheta, true); // settling behavior
-        if (!forwards) linearError = -linearError;
+        if (!params.forwards) linearError = -linearError;
 
         // get PID outputs
         float angularPower = -turnPID.update(radToDeg(angularError), 0);
@@ -462,13 +511,13 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, int timeout, bool f
         // calculate the maximum speed at which the robot can turn
         // using the formula v = sqrt( u * r * g )
         if (radius != -1) {
-            float maxTurnSpeed = sqrt(chasePower * radius * 9.8);
+            float maxTurnSpeed = sqrt(params.chasePower * radius * 9.8);
             // the new linear power is the minimum of the linear power and the max turn speed
             if (linearPower > maxTurnSpeed && !close) linearPower = maxTurnSpeed;
             else if (linearPower < -maxTurnSpeed && !close) linearPower = -maxTurnSpeed;
         }
         // prioritize turning over moving
-        float overturn = fabs(angularPower) + fabs(linearPower) - maxSpeed - maxSpeed * smoothness;
+        float overturn = fabs(angularPower) + fabs(linearPower) - params.maxSpeed - params.maxSpeed * params.smoothness;
 
         if (overturn > 0) linearPower -= linearPower > 0 ? overturn : -overturn;
 
@@ -520,13 +569,7 @@ void Chassis::turn(float heading, bool isSmallTurn, float maxSpeed, bool async) 
         // update pidOutput
         float pidOutput = selectedPID.update(0, -error);
         // cap max speed
-        if (pidOutput > maxSpeed) {
-            pidOutput = maxSpeed;
-        } else if (pidOutput < -maxSpeed) {
-            pidOutput = -maxSpeed;
-        } else {
-            pidOutput = pidOutput;
-        }
+        pidOutput = std::clamp(pidOutput, -maxSpeed, maxSpeed);
         // run
         arcade(0, pidOutput);
         pros::delay(20);
@@ -587,8 +630,7 @@ void Chassis::turn_to_point(float x1, float y1, int timeout, bool forwards, floa
         motorPower = turnPID.update(0, -deltaTheta);
 
         // cap the speed
-        if (motorPower > maxSpeed) motorPower = maxSpeed;
-        else if (motorPower < -maxSpeed) motorPower = -maxSpeed;
+        motorPower = std::clamp(motorPower, -maxSpeed, maxSpeed);
 
         // move the drivetrain
         leftMotors->move(motorPower);
@@ -639,13 +681,8 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed, bool async) {
             rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         }
         // cap outputs
-        if (pidOutput > maxSpeed) {
-            pidOutput = maxSpeed;
-        } else if (pidOutput < -maxSpeed) {
-            pidOutput = -maxSpeed;
-        } else {
-            pidOutput = pidOutput;
-        }
+        pidOutput = std::clamp(pidOutput, -maxSpeed, maxSpeed);
+
         // check which way the swing should turn
         if (isLeft) {
             tank(0, pidOutput);
@@ -697,13 +734,8 @@ void Chassis::swing_without_settle(float heading, bool isLeft, float degreeRange
             rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_HOLD);
         }
         // cap max speeds
-        if (pidOutput > maxSpeed) {
-            pidOutput = maxSpeed;
-        } else if (pidOutput < -maxSpeed) {
-            pidOutput = -maxSpeed;
-        } else {
-            pidOutput = pidOutput;
-        }
+        pidOutput = std::clamp(pidOutput, -maxSpeed, maxSpeed);
+
         // check which way the swing should turn
         if (isLeft) {
             tank(0, pidOutput);
@@ -746,11 +778,13 @@ void Chassis::arc(float heading, double leftMult, double rightMult, float maxSpe
         float error = rollAngle180(heading - imu->get_heading());
         // set distTravelled to error for async purposes
         distTravelled = error;
+
         // calculate pid outputs
         float pidOutput = arcPID.update(0, -error);
+
         // cap speeds
-        if (pidOutput > maxSpeed) pidOutput = maxSpeed;
-        if (pidOutput < -maxSpeed) pidOutput = -maxSpeed;
+        pidOutput = std::clamp(pidOutput, -maxSpeed, maxSpeed);
+
         // break if error is less than one
         if (fabs(error) < 1) break;
         // run
@@ -797,8 +831,8 @@ void Chassis::arc_non_settle(float heading, double leftMult, double rightMult, f
         // calculate pid outputs
         float pidOutput = arcPID.update(0, -error);
         // cap max speeds
-        if (pidOutput > maxSpeed) pidOutput = maxSpeed;
-        if (pidOutput < -maxSpeed) pidOutput = -maxSpeed;
+        pidOutput = std::clamp(pidOutput, -maxSpeed, maxSpeed);
+        //break if error is less than one
         if (fabs(error) < 1) break;
         // run
         tank(pidOutput * leftMult, pidOutput * rightMult);
