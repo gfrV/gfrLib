@@ -154,8 +154,10 @@ class Chassis {
          * @param distance distance the bot should move to(in inches)
          * @param maxSpeed the max speed the robot can travel in(out of 127).
          * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         * @param heading specified heading the robot should travel at while approaching lateral target
+         * 
          */
-        void move(float distance, float maxSpeed = 127, bool async = false);
+        void move(float distance, float maxSpeed = 127, bool async = false, float heading = NULL);
 
         /**
          * @brief moves the bot forwards or backwards using the forward or backward PID and exits into the user
@@ -166,8 +168,10 @@ class Chassis {
          * exitrange = 2)
          * @param maxSpeed the max speed the robot can travel in(out of 127)
          * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         * @param heading specified heading the robot should travel at while approaching lateral target
+         * 
          */
-        void move_without_settle(float distance, float exitrange, float maxSpeed = 127, bool async = false);
+        void move_without_settle(float distance, float exitrange, float maxSpeed = 127, bool async = false, float heading = NULL);
         /**
          * @brief moves the bot forwards or backwards using the forward or backward PID and exits after a certain time
          * is reached
@@ -176,8 +180,10 @@ class Chassis {
          * @param timeout how much time the robot should move until
          * @param maxSpeed the max speed the robot can travel in(out of 127)
          * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
+         * @param heading specified heading the robot should travel at while approaching lateral target
+         * 
          */
-        void move_without_settletime(float distance, float timeout, float maxSpeed = 127, bool async = false);
+        void move_without_settletime(float distance, float timeout, float maxSpeed = 127, bool async = false, float heading = NULL);
         /**
          * @brief moves the bot to a certain point on the field
          *

@@ -158,9 +158,11 @@ void Chassis::set_pose(float x1, float y1, float theta1) {
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move(float distance, float maxSpeed, bool async) {
+void Chassis::move(float distance, float maxSpeed, bool async, float heading) {
     // dummy PID
     PID drivingPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    float angle = 0;
+
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
@@ -179,8 +181,13 @@ void Chassis::move(float distance, float maxSpeed, bool async) {
     drivingPID.reset();
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
-    float angle = imu->get_heading();
 
+    //check if heading is null or assign angle target
+    if(heading != NULL){
+        angle = heading;
+    } else{
+        angle = imu->get_heading();
+    }
     do {
         // get current encoder positions
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
@@ -219,9 +226,11 @@ void Chassis::move(float distance, float maxSpeed, bool async) {
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move_without_settle(float distance, float exitrange, float maxSpeed, bool async) {
+void Chassis::move_without_settle(float distance, float exitrange, float maxSpeed, bool async, float heading) {
     // dummy PID
     PID drivingPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    float angle = 0;
+
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
@@ -240,7 +249,12 @@ void Chassis::move_without_settle(float distance, float exitrange, float maxSpee
     drivingPID.reset();
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
-    float angle = imu->get_heading();
+    //check if heading is null or assign angle target
+    if(heading != NULL){
+        angle = heading;
+    } else{
+        angle = imu->get_heading();
+    }
     float error = 0; // globalizing error for exit range calculations
     do {
         // get current encoder positions
@@ -280,9 +294,10 @@ void Chassis::move_without_settle(float distance, float exitrange, float maxSpee
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move_without_settletime(float distance, float timeout, float maxSpeed, bool async) {
+void Chassis::move_without_settletime(float distance, float timeout, float maxSpeed, bool async, float heading) {
     // dummy PID
     PID selectedPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    float angle = 0;
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
@@ -302,7 +317,13 @@ void Chassis::move_without_settletime(float distance, float timeout, float maxSp
     // get prev values
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
-    float angle = imu->get_heading();
+    
+    //check if heading is null or assign angle target
+    if(heading != NULL){
+        angle = heading;
+    } else{
+        angle = imu->get_heading();
+    }
 
     // timer start
     auto start = pros::millis();
