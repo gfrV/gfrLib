@@ -93,12 +93,13 @@ Chassis::Chassis(driveTrain drivetrain, pidSetup pidsetup)
     this->rightMotors->set_encoder_units(pros::E_MOTOR_ENCODER_ROTATIONS);
 }
 
-Pose odomPose(0, 0, 0);
+
 
 /**
  * @brief calibrate chassis and set up odometry
  *
  */
+Pose odomPose(0, 0, 0);
 void Chassis::calibrate() {
     imu->reset();
     leftMotors->tare_position();
@@ -158,36 +159,36 @@ void Chassis::set_pose(float x1, float y1, float theta1) {
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move(float distance, float maxSpeed, bool async, float heading) {
+void Chassis::move(float distance, gainScheduleParams gainSched,float maxSpeed, bool async) {
+    //create gainSchedular object
+    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
     // dummy PID
     PID drivingPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
-    float angle = 0;
-
+    //request start of motion
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { move(distance, maxSpeed, false); });
+        pros::Task task([&]() { move(distance, gainSched, maxSpeed, false); });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    //apply which PID to use
     if (distance < 0) {
         PID drivingPID = backwardPID;
     } else {
         PID drivingPID = drivePID;
     }
+    //reset PID
     drivingPID.reset();
+    //get current values
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
-
     //check if heading is null or assign angle target
-    if(heading != NULL){
-        angle = heading;
-    } else{
-        angle = imu->get_heading();
-    }
+    float angle = imu->get_heading();
+    
     do {
         // get current encoder positions
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
@@ -199,19 +200,19 @@ void Chassis::move(float distance, float maxSpeed, bool async, float heading) {
         float error = rollAngle180(angle - imu->get_heading());
         // calculate pid outputs
         float pidAngOutput = headingPID.update(0, -error);
-        float pidOutputLateral = drivingPID.update(distance, distanceTravelled);
+        float pidOutputLateral = gainSchedU.update(drivingPID, (distance - distanceTravelled));
         // cap max speeds
         pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
         pros::delay(20);
-
         // run while pid is not settled
     } while (!drivingPID.isSettled());
     // stop motors
     arcade(0, 0);
     // set distance travelled to -1 to let motion queue know
     distTravelled = -1;
+    //end motion
     this->end_motion();
 }
 
@@ -226,35 +227,35 @@ void Chassis::move(float distance, float maxSpeed, bool async, float heading) {
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move_without_settle(float distance, float exitrange, float maxSpeed, bool async, float heading) {
+void Chassis::move_without_settle(float distance, gainScheduleParams gainSched, float exitrange, float timeout, float maxSpeed, bool async) {
+    //create gainSchedular object
+    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
     // dummy PID
     PID drivingPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
-    float angle = 0;
-
+    //request start motion
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { move(distance, maxSpeed, false); });
+        pros::Task task([&]() { move(distance, gainSched, maxSpeed, false); });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    //apply which PID to use
     if (distance < 0) {
         PID drivingPID = backwardPID;
     } else {
         PID drivingPID = drivePID;
     }
+    //reset PID
     drivingPID.reset();
+    //calculate current values
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
     //check if heading is null or assign angle target
-    if(heading != NULL){
-        angle = heading;
-    } else{
-        angle = imu->get_heading();
-    }
+    float angle = imu->get_heading();
     float error = 0; // globalizing error for exit range calculations
     do {
         // get current encoder positions
@@ -267,13 +268,12 @@ void Chassis::move_without_settle(float distance, float exitrange, float maxSpee
         error = rollAngle180(angle - imu->get_heading());
         // calculate pid outputs
         float pidAngOutput = headingPID.update(0, -error);
-        float pidOutputLateral = drivingPID.update(distance, distanceTravelled);
+        float pidOutputLateral = gainSchedU.update(drivingPID, (distance - distanceTravelled));
         // cap max speeds
         pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
         pros::delay(20);
-
         // run while pid is not settled
     } while (!drivingPID.isSettled() || fabs(error) > exitrange);
     // dont stop motors, just coast them
@@ -294,37 +294,35 @@ void Chassis::move_without_settle(float distance, float exitrange, float maxSpee
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move_without_settletime(float distance, float timeout, float maxSpeed, bool async, float heading) {
+void Chassis::move_without_settletime(float distance, gainScheduleParams gainSched, float timeout, float maxSpeed, bool async) {
+    //create gainSchedular object
+    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
     // dummy PID
     PID selectedPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
-    float angle = 0;
+    //let async queue know to start motion
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { move(distance, maxSpeed, false); });
+        pros::Task task([&]() { move(distance, gainSched, maxSpeed, false); });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    //select which PID to use
     if (distance < 0) {
         PID drivingPID = backwardPID;
     } else {
         PID drivingPID = drivePID;
     }
+    //reset PID
     selectedPID.reset();
     // get prev values
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
-    
     //check if heading is null or assign angle target
-    if(heading != NULL){
-        angle = heading;
-    } else{
-        angle = imu->get_heading();
-    }
-
+    float angle = imu->get_heading();
     // timer start
     auto start = pros::millis();
     do {
@@ -338,7 +336,7 @@ void Chassis::move_without_settletime(float distance, float timeout, float maxSp
         float error = rollAngle180(angle - imu->get_heading());
         // calculate pid outputs
         float pidAngOutput = headingPID.update(0, -error);
-        float pidOutputLateral = selectedPID.update(distance, distanceTravelled);
+        float pidOutputLateral = gainSchedU.update(selectedPID, (distance - distanceTravelled));;
         // cap max speeds
         pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
@@ -365,62 +363,78 @@ void Chassis::move_without_settletime(float distance, float timeout, float maxSp
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move_to_point(float x1, float y1, int timeout, float maxSpeed, bool async) {
+void Chassis::move_to_point(float x1, float y1, gainScheduleParams gainSched, int timeout, float maxSpeed, bool async) {
+    //reset PIDS
     turnPID.reset();
     drivePID.reset();
-
+    //create gainSchedular object
+    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
+    //local vars
     float prevLateralPower = 0;
     float prevAngularPower = 0;
     bool close = false;
+    //timer
     uint32_t start = pros::millis();
+    //request motion start
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { move_to_point(x1, y1, timeout, maxSpeed, false); });
+        pros::Task task([&]() { move_to_point(x1, y1, gainSched,timeout, maxSpeed, false); });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
     while (((start < timeout) || (!drivePID.isSettled() && !turnPID.isSettled()))) {
+        //update heading
         heading = std::fmod(heading, 360);
-        distTravelled += 10;
-        // update error
+        //update distTravelled for async purposes
+        distTravelled += distance(x1, y1, x, y);
+        //calculate deltas
         float deltaX = x1 - x;
         float deltaY = y1 - y;
+        //calculate target theta
         float targetTheta = fmod(radToDeg(M_PI_2 - atan2(deltaY, deltaX)), 360);
+        //hypot formula to calculate distance
         float hypot = std::hypot(deltaX, deltaY);
+        //possibilty of 2 different angles
         float diffTheta1 = angleError(heading, targetTheta, false);
         float diffTheta2 = angleError(heading, targetTheta + 180, false);
+        //calculate errors
         float angularError = (std::fabs(diffTheta1) < std::fabs(diffTheta2)) ? diffTheta1 : diffTheta2;
         float lateralError = hypot * cos(degToRad(std::fabs(diffTheta1)));
-        float lateralPower = drivePID.update(lateralError, 0);
+        //calculate powers
+        float lateralPower = gainSchedU.update(drivePID, (lateralError));
         float angularPower = -turnPID.update(angularError, 0);
-
+        //ready to settle?
         if (distance(x1, y1, x, y) < 7.5) {
             close = true;
             maxSpeed = (std::fabs(prevLateralPower) < 30) ? 30 : std::fabs(prevLateralPower);
         }
-        if (lateralPower > maxSpeed) lateralPower = maxSpeed;
-        else if (lateralPower < -maxSpeed) lateralPower = -maxSpeed;
+        //cap max speed
+        lateralPower = std::clamp(lateralPower, -maxSpeed, maxSpeed);
+        //if close, disable angular power
         if (close) angularPower = 0;
-
+        //update prev values
         prevLateralPower = lateralPower;
-        prevAngularPower = angularPower;
-
+        prevAngularPower = angularPower;    
+        //calculate powers
         float leftPower = lateralPower + angularPower;
         float rightPower = lateralPower - angularPower;
-
+        //create a ratio between left and right power
         float ratio = std::max(std::fabs(leftPower), std::fabs(rightPower)) / maxSpeed;
         if (ratio > 1) {
             leftPower /= ratio;
             rightPower /= ratio;
         }
+        //run
         tank(leftPower, rightPower);
         pros::delay(10);
     }
+    //stop the movement
     tank(0, 0);
+    //set distTravelled to -1 to let async queue know movement is done
     distTravelled = -1;
     this->end_motion();
 }
@@ -442,37 +456,37 @@ void Chassis::move_to_point(float x1, float y1, int timeout, float maxSpeed, boo
  * @param gLead weight for ghost point
  *
  */
-void Chassis::move_to_pose(float x1, float y1, float theta1, float timeout, MoveToPoseParams params, bool async) {
+void Chassis::move_to_pose(float x1, float y1, float theta1, gainScheduleParams gainSched, float timeout, MoveToPoseParams params, bool async) {
+    //request motion start
     this->request_motion_start();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
         pros::Task task([&]() {
-            move_to_pose(x1, y1, theta1, timeout, params, false);
+            move_to_pose(x1, y1, theta1, gainSched, timeout, params, false);
         });
         this->end_motion();
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    //create gainSchedular object
+    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
     // reset pids
     turnPID.reset();
     drivePID.reset();
-
     // calculate target theta in radians
     double targetTheta = M_PI_2 - degToRad(theta1);
-
     // prev powers
     float prevLateralPower = 0;
     float prevAngularPower = 0;
-
     // last pose
     float lastposex = x;
     float lastposey = y;
     float lastposetheta = heading;
-
+    //target theta -180 if movement is backwards
     if (!params.forwards) targetTheta = fmod(targetTheta + M_PI, 2 * M_PI); // backwards movement
-
+    //local vars
     bool close = false;
     if (params.chasePower == 0) params.chasePower = defaultChasePower; // make chasePower globalized in chassis setup
     // initial carrot
@@ -489,46 +503,38 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, float timeout, Move
         double currY = y;
         double currHeading = heading; // for reference
         double currTheta = degToRad(heading);
-
         // if not forwards, add PI(180 deg) so it travels with the side of the bot the other way
         if (!params.forwards) currTheta += M_PI;
         // update distTravelled for async purposes
         distTravelled += distance(lastposex, lastposey, currX, currY);
-
         // update prev
         lastposex = currX;
         lastposey = currY;
         lastposetheta = currHeading;
-
         // check if close is true
         if (distance(x1, y1, x, y) < 7.5) { close = true; }
-
         // carrot - 2 times for each part
         double carrotX = (inCarrotX + (carrotX - inCarrotX) * (1 - params.gLead));
         double carrotY = (inCarrotY + (carrotY - inCarrotY) * (1 - params.gLead));
-
         if (close) { // settle behavior
             x1 = carrotX;
             y1 = carrotY;
         }
-
         // calculate error
         float angularError =
             angleError(pointAngleDifference(carrotX, carrotY, currX, currY), currTheta, true); // angular error
         float linearError = distance(carrotX, carrotY, currX, currY) * cos(angularError); // linear error
-
         // settling behabior
         if (close) angularError = angleError(targetTheta, currTheta, true); // settling behavior
         if (!params.forwards) linearError = -linearError;
-
         // get PID outputs
         float angularPower = -turnPID.update(radToDeg(angularError), 0);
-        float linearPower = drivePID.update(linearError, 0);
-
+        float linearPower = gainSchedU.update(drivePID, (linearError));
+        //calculate curvature
         float curvature = fabs(getCurvature(currX, currY, currTheta, carrotX, carrotY, 0));
+        //if the curvature is 0, set to -1
         if (curvature == 0) curvature = -1;
         float radius = 1 / curvature;
-
         // calculate the maximum speed at which the robot can turn
         // using the formula v = sqrt( u * r * g )
         if (radius != -1) {
@@ -539,17 +545,16 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, float timeout, Move
         }
         // prioritize turning over moving
         float overturn = fabs(angularPower) + fabs(linearPower) - params.maxSpeed - params.maxSpeed * params.smoothness;
-
+        //limit linear power based on overturn
         if (overturn > 0) linearPower -= linearPower > 0 ? overturn : -overturn;
-
         // calculate motor powers
         float leftPower = linearPower + angularPower;
         float rightPower = linearPower - angularPower;
-
+        //run
         tank(leftPower, rightPower);
         pros::delay(10);
     }
-
+    //stop motors
     tank(0, 0);
     distTravelled = -1;
     this->end_motion();
@@ -567,6 +572,7 @@ void Chassis::move_to_pose(float x1, float y1, float theta1, float timeout, Move
 void Chassis::turn(float heading, bool isSmallTurn, float maxSpeed, bool async) {
     // dummy PID
     PID selectedPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    //select which PID to use
     if (isSmallTurn) {
         PID selectedPID = smallturnPID;
     } else {
@@ -580,8 +586,8 @@ void Chassis::turn(float heading, bool isSmallTurn, float maxSpeed, bool async) 
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    //reset PID
     selectedPID.reset();
-
     do {
         // calculate error
         float error = rollAngle180(heading - imu->get_heading());
@@ -595,7 +601,7 @@ void Chassis::turn(float heading, bool isSmallTurn, float maxSpeed, bool async) 
         arcade(0, pidOutput);
         pros::delay(20);
     } while (!selectedPID.isSettled());
-
+    //stop motors
     arcade(0, 0);
     distTravelled = -1;
     this->end_motion();
@@ -639,27 +645,21 @@ void Chassis::turn_to_point(float x1, float y1, int timeout, bool forwards, floa
         distTravelled += pose.distance(Pose(x1, y1));
         // update completion vars
         distTravelled = fabs(angleError(pose.theta, startTheta, false));
-
         deltaX = x - pose.x;
         deltaY = y - pose.y;
         targetTheta = fmod(radToDeg(M_PI_2 - atan2(deltaY, deltaX)), 360);
-
         // calculate deltaTheta
         deltaTheta = angleError(targetTheta, pose.theta, false);
-
         // calculate the speed
         motorPower = turnPID.update(0, -deltaTheta);
-
         // cap the speed
         motorPower = std::clamp(motorPower, -maxSpeed, maxSpeed);
-
         // move the drivetrain
         leftMotors->move(motorPower);
         rightMotors->move(-motorPower);
-
+        //delay
         pros::delay(10);
     }
-
     // stop the drivetrain
     leftMotors->move(0);
     rightMotors->move(0);
@@ -703,14 +703,12 @@ void Chassis::swing(float heading, bool isLeft, float maxSpeed, bool async) {
         }
         // cap outputs
         pidOutput = std::clamp(pidOutput, -maxSpeed, maxSpeed);
-
         // check which way the swing should turn
         if (isLeft) {
             tank(0, pidOutput);
         } else {
             tank(pidOutput, 0);
         }
-
         pros::delay(20);
     } while (!swingPID.isSettled());
 

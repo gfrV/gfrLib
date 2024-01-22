@@ -6,7 +6,7 @@
 #include "util/pid.hpp"
 #include "util/util.hpp"
 #include <functional>
-#include "opcontrol.hpp"
+#include "gainScheduler.hpp"
 
 namespace gfrLib {
 
@@ -69,17 +69,15 @@ struct driveTrain {
  * parameters, overcoming the c/c++ limitation
  *
  * @param forwards whether the robot should move forwards or backwards. True by default
+ * @param maxSpeed the maximum speed the robot can travel at. Value between 0-127.
+ *  127 by default
  * @param chasePower how fast the robot will move around corners. Recommended value 2-15.
  *  0 means use chasePower set in chassis class. 0 by default.
  * @param lead carrot point multiplier. value between 0 and 1. Higher values result in
  *  curvier movements. 0.6 by default
- * @param maxSpeed the maximum speed the robot can travel at. Value between 0-127.
- *  127 by default
- * @param minSpeed the minimum speed the robot can travel at. If set to a non-zero value,
- *  the exit conditions will switch to less accurate but smoother ones. Value between 0-127.
- *  0 by default
- * @param earlyExitRange distance between the robot and target point where the movement will
- *  exit. Only has an effect if minSpeed is non-zero.
+ * @param gLead ghost point weight to approach target smoothly
+ * @param smoothness how smooth the movement should be @note slower, but approaches smaller targets more smoothly.
+ * 
  */
 struct MoveToPoseParams {
         bool forwards = true;
@@ -89,6 +87,27 @@ struct MoveToPoseParams {
         float gLead = 0;
         float smoothness = 1;
 
+};
+
+/**
+ * @brief Parameters for gainScheduler kP tuner.
+ *
+ * We use a struct to simplify customization. Chassis::moveToPose has many
+ * parameters and specifying them all just to set one optional param ruins
+ * readability. By passing a struct to the function, we can have named
+ * parameters, overcoming the c/c++ limitation
+ *
+ * @param min the minimum speed the bot could be travelling at
+ * @param max the maximum speed the bot could be travelling at
+ * @param roundness how jerky the movement should be
+ * @param thickness how much of the ideal speed for the distance specified the robot should run at.
+ * 
+ */
+struct gainScheduleParams {
+        float min = 0;
+        float max = 127;
+        float roundness = 1;
+        float thickness = 3;
 };
 
 class Chassis {
@@ -157,7 +176,7 @@ class Chassis {
          * @param heading specified heading the robot should travel at while approaching lateral target
          * 
          */
-        void move(float distance, float maxSpeed = 127, bool async = false, float heading = NULL);
+        void move(float distance, gainScheduleParams gainSched, float maxSpeed = 127, bool async = false);
 
         /**
          * @brief moves the bot forwards or backwards using the forward or backward PID and exits into the user
@@ -171,7 +190,8 @@ class Chassis {
          * @param heading specified heading the robot should travel at while approaching lateral target
          * 
          */
-        void move_without_settle(float distance, float exitrange, float maxSpeed = 127, bool async = false, float heading = NULL);
+        /*float distance, gainScheduleParams gainSched = {}, float exitrange, float timeout, float maxSpeed, bool async*/
+        void move_without_settle(float distance, gainScheduleParams gainSched, float exitrange, float timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot forwards or backwards using the forward or backward PID and exits after a certain time
          * is reached
@@ -183,7 +203,7 @@ class Chassis {
          * @param heading specified heading the robot should travel at while approaching lateral target
          * 
          */
-        void move_without_settletime(float distance, float timeout, float maxSpeed = 127, bool async = false, float heading = NULL);
+        void move_without_settletime(float distance, gainScheduleParams gainSched, float timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot to a certain point on the field
          *
@@ -193,7 +213,7 @@ class Chassis {
          * @param maxSpeed the max speed the robot should travel in(out of 127).
          * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
          */
-        void move_to_point(float x1, float y1, int timeout, float maxSpeed = 127, bool async = false);
+        void move_to_point(float x1, float y1, gainScheduleParams gainSched, int timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot to a target pose(x,y,theta)
          *
@@ -211,7 +231,7 @@ class Chassis {
          * @param gLead weight for ghost point
          *
          */
-        void move_to_pose(float x1, float y1, float theta1, float timeout, MoveToPoseParams params = {}, bool async = false);
+        void move_to_pose(float x1, float y1, float theta1, gainScheduleParams gainSched, float timeout, MoveToPoseParams params = {}, bool async = false);
 
         /**
          * @brief turns the robot to a target angle
