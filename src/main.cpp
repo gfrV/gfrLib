@@ -20,10 +20,10 @@ void disabled() {}
 void competition_initialize() {}
 
 gfrLib::gainScheduleParams drivegain{
-    90,
-    127,
-    10,
-    15
+    90, // min speed
+    127, //max speed
+    10, // how jerky should it be?
+    15 //thickness
 };
 
 void autonomous(){

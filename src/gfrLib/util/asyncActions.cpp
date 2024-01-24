@@ -9,7 +9,7 @@ using namespace gfrLib;
  *
  * @param dist the distance the robot needs to travel before returning
  */
-void Chassis::wait_until(float error) {
+void Chassis::waitUntil(float error) {
     // do while to give the thread time to start
     do pros::delay(10);
     while (distTravelled <= error && distTravelled != -1);
@@ -18,7 +18,7 @@ void Chassis::wait_until(float error) {
 /**
  * @brief Dequeues this motion and permits queued task to run
  */
-void Chassis::end_motion() {
+void Chassis::endMotion() {
     // move the "queue" forward 1
     this->motionRunning = this->motionQueued;
     this->motionQueued = false;
@@ -31,7 +31,7 @@ void Chassis::end_motion() {
  * @brief Wait until the robot has completed the path
  *
  */
-void Chassis::wait_until_done() {
+void Chassis::waitUntilDone() {
     do pros::delay(10);
     while (distTravelled != -1);
 }
@@ -40,7 +40,7 @@ void Chassis::wait_until_done() {
  * @brief Cancels the currently running motion.
  * If there is a queued motion, then that queued motion will run.
  */
-void Chassis::cancel_motion() {
+void Chassis::cancelMotion() {
     this->motionRunning = false;
     pros::delay(10); // give time for motion to stop
 }
@@ -48,8 +48,8 @@ void Chassis::cancel_motion() {
 /**
  * @brief Indicates that this motion is queued and blocks current task until this motion reaches front of queue
  */
-void Chassis::request_motion_start() {
-    if (this->is_in_motion()) this->motionQueued = true; // indicate a motion is queued
+void Chassis::requestMotionStart() {
+    if (this->isInMotion()) this->motionQueued = true; // indicate a motion is queued
     else this->motionRunning = true; // indicate a motion is running
 
     // wait until this motion is at front of "queue"
@@ -60,7 +60,7 @@ void Chassis::request_motion_start() {
  * @brief Cancels all motions, even those that are queued.
  * After this, the chassis will not be in motion.
  */
-void Chassis::cancel_all_motions() {
+void Chassis::cancelAllMotions() {
     this->motionRunning = false;
     this->motionQueued = false;
     pros::delay(10); // give time for motion to stop
@@ -69,4 +69,4 @@ void Chassis::cancel_all_motions() {
 /**
  * @return whether a motion is currently running
  */
-bool Chassis::is_in_motion() const { return this->motionRunning; }
+bool Chassis::isInMotion() const { return this->motionRunning; }

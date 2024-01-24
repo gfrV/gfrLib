@@ -1,4 +1,4 @@
-#include "gfrLib/gainScheduler.hpp"
+#include "gfrLib/util/gainScheduler.hpp"
 
 using namespace gfrLib;
 
@@ -25,6 +25,7 @@ gainScheduler::gainScheduler(float min, float max, float roundness, float thickn
  * @param roundness 
  * @param thickness 
  * @return float 
+ * 
  */
 float gainScheduler::gainFunction(float error, float min, float max, float roundness, float thickness){
     return (min - max) * std::pow(std::abs(error), roundness) /

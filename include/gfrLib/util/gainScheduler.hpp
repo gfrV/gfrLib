@@ -1,4 +1,4 @@
-#include "util/pid.hpp"
+#include "pid.hpp"
 #include <cmath>
 
 namespace gfrLib {
@@ -10,7 +10,7 @@ class gainScheduler {
          * 
          * @param min min speed the robot could travel at
          * @param max max speed the robot could travel at
-         * @param roundness 
+         * @param roundness @note how smooth the movement should be(greater than 0)
          * @param thickness 
          */
         gainScheduler(float min, float max, float roundness, float thickness);
@@ -31,6 +31,7 @@ class gainScheduler {
         float roundness;
         float thickness;
         
+        //gain func
         float gainFunction(float error, float min, float max, float roundness, float thickness);
 };
 }; // namespace gfrLib

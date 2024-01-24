@@ -6,7 +6,7 @@
 #include "util/pid.hpp"
 #include "util/util.hpp"
 #include <functional>
-#include "gainScheduler.hpp"
+#include "util/gainScheduler.hpp"
 
 namespace gfrLib {
 
@@ -92,15 +92,12 @@ struct MoveToPoseParams {
 /**
  * @brief Parameters for gainScheduler kP tuner.
  *
- * We use a struct to simplify customization. Chassis::moveToPose has many
- * parameters and specifying them all just to set one optional param ruins
- * readability. By passing a struct to the function, we can have named
- * parameters, overcoming the c/c++ limitation
+ * @note this struct is used to tune kP live during the movement. 
  *
  * @param min the minimum speed the bot could be travelling at
  * @param max the maximum speed the bot could be travelling at
- * @param roundness how jerky the movement should be
- * @param thickness how much of the ideal speed for the distance specified the robot should run at.
+ * @param roundness how jerky the movement should be @note(the lower the roundness, the more jerky)
+ * @param thickness ratio in 
  * 
  */
 struct gainScheduleParams {
@@ -141,21 +138,21 @@ class Chassis {
          * @param y1 set the y value
          * @param theta1 set the theta value(in degrees)
          */
-        void set_pose(float x1, float y1, float theta1);
+        void setPose(float x1, float y1, float theta1);
         /**
          * @brief set the heading of the bot specifically- pain to always change points when you just have to change
          * heading.
          *
          * @param heading set heading in degrees
          */
-        void set_heading(float heading);
+        void setHeading(float heading);
         /**
          * @brief moves the bot using tank fashion(left controls leftside of the base, right controls rightside of the
          * base)
          *
          * @param left left power
          * @param right right power
-         * @param curve 0<curve; curve driver control stick values
+         * @param curve 0<=curve; curve driver control stick values
          */
         void tank(float left, float right, float curve = 0);
         /**
@@ -164,7 +161,7 @@ class Chassis {
          *
          * @param lateral left power
          * @param angular right power
-         * @param curve 0<curve; curve driver control stick values
+         * @param curve 0<=curve; curve driver control stick values
          */
         void arcade(float lateral, float angular, float curve = 0);
         /**
@@ -191,7 +188,7 @@ class Chassis {
          * 
          */
         /*float distance, gainScheduleParams gainSched = {}, float exitrange, float timeout, float maxSpeed, bool async*/
-        void move_without_settle(float distance, gainScheduleParams gainSched, float exitrange, float timeout, float maxSpeed = 127, bool async = false);
+        void moveWithoutSettle(float distance, gainScheduleParams gainSched, float exitRange, float timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot forwards or backwards using the forward or backward PID and exits after a certain time
          * is reached
@@ -203,7 +200,7 @@ class Chassis {
          * @param heading specified heading the robot should travel at while approaching lateral target
          * 
          */
-        void move_without_settletime(float distance, gainScheduleParams gainSched, float timeout, float maxSpeed = 127, bool async = false);
+        void moveWithoutSettleTime(float distance, gainScheduleParams gainSched, float timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot to a certain point on the field
          *
@@ -213,7 +210,7 @@ class Chassis {
          * @param maxSpeed the max speed the robot should travel in(out of 127).
          * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
          */
-        void move_to_point(float x1, float y1, gainScheduleParams gainSched, int timeout, float maxSpeed = 127, bool async = false);
+        void moveToPoint(float x1, float y1, gainScheduleParams gainSched, int timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot to a target pose(x,y,theta)
          *
@@ -231,7 +228,7 @@ class Chassis {
          * @param gLead weight for ghost point
          *
          */
-        void move_to_pose(float x1, float y1, float theta1, gainScheduleParams gainSched, float timeout, MoveToPoseParams params = {}, bool async = false);
+        void moveToPose(float x1, float y1, float theta1, gainScheduleParams gainSched, float timeout, MoveToPoseParams params = {}, bool async = false);
 
         /**
          * @brief turns the robot to a target angle
@@ -267,7 +264,7 @@ class Chassis {
 
          *
         */
-        void swing_without_settle(float heading, bool isLeft, float degreeRange, float maxSpeed = 127,
+        void swingWithoutSettle(float heading, bool isLeft, float degreeRange, float maxSpeed = 127,
                                   bool async = false);
         /**
          * @brief does a circular arc to target heading using a ratio on the PID outputs.
@@ -293,7 +290,7 @@ class Chassis {
 
         *
        */
-        void arc_non_settle(float heading, double leftMult, double rightMult, float maxSpeed = 127, bool async = false);
+        void arcNonSettle(float heading, double leftMult, double rightMult, float maxSpeed = 127, bool async = false);
         /**
          * @brief uses a preset radius to move the robot to a certain angle using radius(in inches)
          *
@@ -342,26 +339,26 @@ class Chassis {
          *
          * @param dist the distance the robot needs to travel before returning
          */
-        void wait_until(float error);
+        void waitUntil(float error);
         /**
          * @brief Wait until the robot has completed the path
          *
          */
-        void wait_until_done();
+        void waitUntilDone();
         /**
          * @brief Cancels the currently running motion.
          * If there is a queued motion, then that queued motion will run.
          */
-        void cancel_motion();
+        void cancelMotion();
         /**
          * @brief Cancels all motions, even those that are queued.
          * After this, the chassis will not be in motion.
          */
-        void cancel_all_motions();
+        void cancelAllMotions();
         /**
          * @return whether a motion is currently running
          */
-        bool is_in_motion() const;
+        bool isInMotion() const;
 
         // odom values
         double x = 0;
@@ -372,11 +369,11 @@ class Chassis {
         /**
          * @brief Indicates that this motion is queued and blocks current task until this motion reaches front of queue
          */
-        void request_motion_start();
+        void requestMotionStart();
         /**
          * @brief Dequeues this motion and permits queued task to run
          */
-        void end_motion();
+        void endMotion();
 
     private:
         const float defaultChasePower;

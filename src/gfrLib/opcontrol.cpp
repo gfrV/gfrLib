@@ -15,7 +15,7 @@ float defaultDriveCurve(float input, float scale) {
  *
  * @param left left power
  * @param right right power
- * @param curve 0<curve; curve driver control stick values
+ * @param curve 0<=curve; curve driver control stick values
  */
 
 void Chassis::tank(float left, float right, float curve) {
@@ -29,7 +29,7 @@ void Chassis::tank(float left, float right, float curve) {
  *
  * @param lateral left power
  * @param angular right power
- * @param curve 0<curve; curve driver control stick values
+ * @param curve 0<=curve; curve driver control stick values
  */
 void Chassis::arcade(float lateral, float angular, float curve) {
     double leftmotorsmove = lateral + angular;
