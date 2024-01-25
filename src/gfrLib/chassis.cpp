@@ -128,7 +128,7 @@ void Chassis::setPose(float x1, float y1, float theta1) {
  * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
  *
  */
-void Chassis::move(float distance, gainScheduleParams gainSched,float maxSpeed, bool async) {
+void Chassis::move(float distance, gainScheduleParams gainSched, float maxSpeed, bool settle, bool async) {
     //create gainSchedular object
     gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
     // dummy PID
@@ -174,40 +174,38 @@ void Chassis::move(float distance, gainScheduleParams gainSched,float maxSpeed, 
         pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
+        //check for settle condition
+        if(!settle){
+            if(fabs(error) < 1){
+                break;
+            }
+        }
         pros::delay(20);
         // run while pid is not settled
     } while (!selectedPID.isSettled());
-    // stop motors
-    arcade(0, 0);
+    // stop motors or coast
+    if(!settle){
+        leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+        rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    } else{
+        arcade(0, 0);
+    }
     // set distance travelled to -1 to let motion queue know
     distTravelled = -1;
     //end motion
     this->endMotion();
 }
 
-/**
- * @brief moves the bot forwards or backwards using the forward or backward PID and exits into the user specified next
- * movement. ANOTHER MOVEMENT AFTER THIS ONE IS REQUIRED.
- *
- * @param distance distance the bot should move to(in inches)
- * @param exitrange how much distance the robot should settle in(ie. want to move 24 inches: distance = 26, exitrange =
- * 2)
- * @param maxSpeed the max speed the robot can travel in(out of 127)
- * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
- *
- */
-void Chassis::moveWithoutSettle(float distance, gainScheduleParams gainSched, float exitrange, float timeout, float maxSpeed, bool async) {
-    //create gainSchedular object
-    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
+void Chassis::move(float distance, float maxSpeed, bool settle, bool async) {
     // dummy PID
     PID selectedPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
-    //request start motion
+    //request start of motion
     this->requestMotionStart();
     // were all motions cancelled?
     if (!this->motionRunning) return;
     // if the function is async, run it in a new task
     if (async) {
-        pros::Task task([&]() { moveWithoutSettle(distance, gainSched, maxSpeed, false); });
+        pros::Task task([&]() { move(distance, maxSpeed, false); });
         this->endMotion();
         pros::delay(10); // delay to give the task time to start
         return;
@@ -220,80 +218,12 @@ void Chassis::moveWithoutSettle(float distance, gainScheduleParams gainSched, fl
     }
     //reset PID
     selectedPID.reset();
-    //calculate current values
+    //get current values
     float beginningLeft = leftMotors->get_positions()[0];
     float beginningRight = rightMotors->get_positions()[0];
     //check if heading is null or assign angle target
     float angle = imu->get_heading();
-    float error = 0; // globalizing error for exit range calculations
-    do {
-        // get current encoder positions
-        float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
-        float deltaRight = rightMotors->get_positions()[0] - beginningRight;
-        // calculate distance travelled
-        float distanceTravelled = (deltaLeft + deltaRight) / 2 * wheelDiameter * M_PI * gearRatio;
-        distTravelled = distanceTravelled;
-        // calculate error
-        error = rollAngle180(angle - imu->get_heading());
-        // calculate pid outputs
-        float pidAngOutput = headingPID.update(0, -error);
-        float pidOutputLateral = gainSchedU.update(selectedPID, (distance - distanceTravelled));
-        // cap max speeds
-        pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
-        // run
-        arcade(pidOutputLateral, pidAngOutput);
-        pros::delay(20);
-        // run while pid is not settled
-    } while (!selectedPID.isSettled() || fabs(error) > exitrange);
-    // dont stop motors, just coast them
-    leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-    rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-    // set distance travelled to -1 to let motion queue know
-    distTravelled = -1;
-    this->endMotion();
-}
-
-/**
- * @brief moves the bot forwards or backwards using the forward or backward PID and exits after a certain time is
- * reached
- *
- * @param distance distance the bot should move to(in inches)
- * @param timeout how much time the robot should move until
- * @param maxSpeed the max speed the robot can travel in(out of 127)
- * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
- *
- */
-void Chassis::moveWithoutSettleTime(float distance, gainScheduleParams gainSched, float timeout, float maxSpeed, bool async) {
-    //create gainSchedular object
-    gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
-    // dummy PID
-    PID selectedPID = PID(0, 0, 0, 0, 0, 0, 0, 0, 0);
-    //let async queue know to start motion
-    this->requestMotionStart();
-    // were all motions cancelled?
-    if (!this->motionRunning) return;
-    // if the function is async, run it in a new task
-    if (async) {
-        pros::Task task([&]() { moveWithoutSettleTime(distance, gainSched, timeout, maxSpeed, false); });
-        this->endMotion();
-        pros::delay(10); // delay to give the task time to start
-        return;
-    }
-    //select which PID to use
-    if (distance < 0) {
-        PID selectedPID = backwardPID;
-    } else {
-        PID selectedPID = drivePID;
-    }
-    //reset PID
-    selectedPID.reset();
-    // get prev values
-    float beginningLeft = leftMotors->get_positions()[0];
-    float beginningRight = rightMotors->get_positions()[0];
-    //check if heading is null or assign angle target
-    float angle = imu->get_heading();
-    // timer start
-    auto start = pros::millis();
+    
     do {
         // get current encoder positions
         float deltaLeft = leftMotors->get_positions()[0] - beginningLeft;
@@ -305,20 +235,30 @@ void Chassis::moveWithoutSettleTime(float distance, gainScheduleParams gainSched
         float error = rollAngle180(angle - imu->get_heading());
         // calculate pid outputs
         float pidAngOutput = headingPID.update(0, -error);
-        float pidOutputLateral = gainSchedU.update(selectedPID, (distance - distanceTravelled));;
+        float pidOutputLateral = selectedPID.update(distance, distanceTravelled);
         // cap max speeds
         pidOutputLateral = std::clamp(pidOutputLateral, -maxSpeed, maxSpeed);
         // run
         arcade(pidOutputLateral, pidAngOutput);
+        //check for settle condition
+        if(!settle){
+            if(fabs(error) < 1){
+                break;
+            }
+        }
         pros::delay(20);
-
         // run while pid is not settled
-    } while (!selectedPID.isSettled() || (pros::millis() - start) < timeout);
-    // dont stop motors, just coast them
-    leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
-    rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    } while (!selectedPID.isSettled());
+    // stop motors or coast
+    if(!settle){
+        leftMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+        rightMotors->set_brake_modes(pros::E_MOTOR_BRAKE_COAST);
+    } else{
+        arcade(0, 0);
+    }
     // set distance travelled to -1 to let motion queue know
     distTravelled = -1;
+    //end motion
     this->endMotion();
 }
 
@@ -336,7 +276,7 @@ void Chassis::moveToPoint(float x1, float y1, gainScheduleParams gainSched, int 
     //reset PIDS
     turnPID.reset();
     drivePID.reset();
-    //create gainSchedular object
+    //create gainSchedular object.
     gainScheduler gainSchedU(gainSched.min, gainSched.max, gainSched.roundness, gainSched.thickness);
     //local vars
     float prevLateralPower = 0;
@@ -598,34 +538,26 @@ void Chassis::turn_to_point(float x1, float y1, int timeout, bool forwards, floa
         pros::delay(10); // delay to give the task time to start
         return;
     }
+    //init vars
     float targetTheta;
-    float deltaX, deltaY, deltaTheta;
-    float motorPower;
-    float startTheta = heading;
     std::uint8_t compState = pros::competition::get_status();
     distTravelled = 0;
     turnPID.reset();
     auto start = pros::millis();
     // main loop
     while ((pros::millis() - start < timeout) && !turnPID.isSettled() && this->motionRunning) {
-        // update variables
-        Pose pose = odomPose;
-        pose.theta = (forwards) ? fmod(pose.theta, 360) : fmod(pose.theta - 180, 360);
-        distTravelled += pose.distance(Pose(x1, y1));
-        // update completion vars
-        distTravelled = fabs(angleError(pose.theta, startTheta, false));
-        deltaX = x - pose.x;
-        deltaY = y - pose.y;
-        targetTheta = fmod(radToDeg(M_PI_2 - atan2(deltaY, deltaX)), 360);
-        // calculate deltaTheta
-        deltaTheta = angleError(targetTheta, pose.theta, false);
-        // calculate the speed
-        motorPower = turnPID.update(0, -deltaTheta);
-        // cap the speed
-        motorPower = std::clamp(motorPower, -maxSpeed, maxSpeed);
-        // move the drivetrain
-        leftMotors->move(motorPower);
-        rightMotors->move(-motorPower);
+        //get current odom vals
+        float currX = x;
+        float currY = y;
+        float currTheta = degToRad(heading);
+        //calculate errors
+        float dx = x1 - currX;
+        float dy = y1 - y;
+        //update pids
+        float headingError = rollAngle180(std::atan2(dx, dy) - heading);
+        float angularOutput = turnPID.updateerror(headingError);
+        //move
+        arcade(0, angularOutput);
         //delay
         pros::delay(10);
     }
@@ -976,3 +908,23 @@ void Chassis::calibrate() {
         }
     });
 }
+/*
+void Odometry::tick() {
+  //updates odometry position one time
+
+  float deltaLateral = parallel.position(vex::deg) - lastLateral;
+  float deltaHorizontal = sideways.position(vex::deg) - lastHorizontal;
+  float deltaTheta = Units::degToRad(GenMath::getHeading(false)) - lastTheta;
+
+  lastLateral = parallel.position(vex::deg);
+  lastHorizontal = sideways.position(vex::deg);
+  lastTheta = Units::degToRad(GenMath::getHeading(false));
+
+  float xOffset = (deltaTheta == 0) ? deltaHorizontal : 2.0 * sin(deltaTheta / 2.0) * (deltaHorizontal / deltaTheta + horizontalTrackWidth);
+  float yOffset = (deltaTheta == 0) ? deltaLateral : 2.0 * sin(deltaTheta / 2.0) * (deltaLateral / deltaTheta + lateralTrackWidth);
+  
+  posX += sqrt(pow(xOffset, 2.0) + pow(yOffset, 2.0)) * cos(atan2(yOffset, xOffset) - (lastTheta + deltaTheta / 2.0));
+  posY += sqrt(pow(xOffset, 2.0) + pow(yOffset, 2.0)) * sin(atan2(yOffset, xOffset) - (lastTheta + deltaTheta / 2.0));
+}
+
+*/

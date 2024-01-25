@@ -22,12 +22,13 @@ void competition_initialize() {}
 gfrLib::gainScheduleParams drivegain{
     90, // min speed
     127, //max speed
-    10, // how jerky should it be?
-    15 //thickness
+    2, // how jerky should it be?
+    100 //thickness
 };
 
 void autonomous(){
     chassis.move(24, drivegain, 127, false);
+    chassis.move(24, 127, false);
 }
 
 void opcontrol() {

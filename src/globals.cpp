@@ -93,8 +93,7 @@ PID headingPID = PID(10, 0, 45, 0, 0.75, 250, 2, 750, 7000); // pid to maintain 
  *
  * @param drivePID PID used for lateral movements
  * @param turnPID PID used for turn movements
- * @param smallTurnPID PID used for smaller turn movements; you can set this to the same as the turnPID if you want,
- * this is used to fine tune small turns.
+ * @param smallTurnPID PID used for smaller turn movements; you can set this to the same as the turnPID if you want, this is used to fine tune small turns.
  * @param swingPID PID used for swing movements
  * @param arcPID PID used for arc movements
  * @param headingPID PID used to keep the robot at a certain heading during movements

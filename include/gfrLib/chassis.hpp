@@ -173,34 +173,10 @@ class Chassis {
          * @param heading specified heading the robot should travel at while approaching lateral target
          * 
          */
-        void move(float distance, gainScheduleParams gainSched, float maxSpeed = 127, bool async = false);
+        void move(float distance, gainScheduleParams gainSched, float maxSpeed = 127, bool settle = true, bool async = false);
+        void move(float distance, float maxSpeed = 127, bool settle = true, bool async = false);
+        
 
-        /**
-         * @brief moves the bot forwards or backwards using the forward or backward PID and exits into the user
-         * specified next movement. ANOTHER MOVEMENT AFTER THIS ONE IS REQUIRED.
-         *
-         * @param distance distance the bot should move to(in inches)
-         * @param exitrange how much distance the robot should settle in(ie. want to move 24 inches: distance = 26,
-         * exitrange = 2)
-         * @param maxSpeed the max speed the robot can travel in(out of 127)
-         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
-         * @param heading specified heading the robot should travel at while approaching lateral target
-         * 
-         */
-        /*float distance, gainScheduleParams gainSched = {}, float exitrange, float timeout, float maxSpeed, bool async*/
-        void moveWithoutSettle(float distance, gainScheduleParams gainSched, float exitRange, float timeout, float maxSpeed = 127, bool async = false);
-        /**
-         * @brief moves the bot forwards or backwards using the forward or backward PID and exits after a certain time
-         * is reached
-         *
-         * @param distance distance the bot should move to(in inches)
-         * @param timeout how much time the robot should move until
-         * @param maxSpeed the max speed the robot can travel in(out of 127)
-         * @param async if selected, subsystem actions such as deploying pneumatics during the movement can occur.
-         * @param heading specified heading the robot should travel at while approaching lateral target
-         * 
-         */
-        void moveWithoutSettleTime(float distance, gainScheduleParams gainSched, float timeout, float maxSpeed = 127, bool async = false);
         /**
          * @brief moves the bot to a certain point on the field
          *
