@@ -27,8 +27,7 @@ gfrLib::gainScheduleParams drivegain{
 };
 
 void autonomous(){
-    chassis.move(24, drivegain, 127, false);
-    chassis.move(24, 127, false);
+    
 }
 
 void opcontrol() {

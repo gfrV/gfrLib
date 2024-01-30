@@ -173,9 +173,10 @@ class Chassis {
          * @param heading specified heading the robot should travel at while approaching lateral target
          * 
          */
-        void move(float distance, gainScheduleParams gainSched, float maxSpeed = 127, bool settle = true, bool async = false);
-        void move(float distance, float maxSpeed = 127, bool settle = true, bool async = false);
-        
+        void move(float distance, float maxSpeed = 127, bool async = false);
+        void moveWithoutSettle(float distance, float exitRange, float maxSpeed = 127, bool async = false);
+        void moveWithoutSettleTime(float distance, float timeout, float maxSpeed = 127, bool async = false);
+        void moveWithHeading(float distance, float targetHeading, float maxSpeed = 127, bool async = false);
 
         /**
          * @brief moves the bot to a certain point on the field
